@@ -1,0 +1,131 @@
+<project name="VerticaBulkLoader" default="default" basedir=".">
+
+	  <description>
+	      VerticaBulkLoader plugin build file
+	    </description>
+
+	  <tstamp prefix="start"/>
+
+	  <!-- system properties to use -->
+	  <property name= "cr" value="${line.separator}"/> 
+		
+	  <!-- set global properties for this build -->
+	
+	  <property name="src"        			location="src"/> 
+	  <property name="classes"        		location="classes"/> 
+	  <property name="lib"        			location="lib"/>
+	  <property name="distrib"        		location="distrib"/>
+	  <property name="libext"     			location="libext"/>
+      <property name="libswt"     			location="../../trunk/libswt"/>
+      <property name="kettlelib"	     	location="../../trunk/distrib/lib"/>
+      <property name="deploydir"     		location="../../trunk/distrib/libext"/>
+	
+	  <target name="init" description="create timestamp and directories">
+    	<echo>Init...</echo>
+	  	
+	    <tstamp/>
+	    <mkdir dir="${classes}"/>
+	    <mkdir dir="${lib}"/>
+	    <mkdir dir="${distrib}"/>
+	  </target>
+
+	  <!--
+	       ==========================
+	            Compile the code
+	       ==========================
+	  -->
+
+	  <target name="compile" depends="init" description="compile the source " >
+	  	<echo>Compiling VerticaBulkLoader...</echo>
+	    <javac srcdir="${src}" 
+	    	   destdir="${classes}">
+
+	    	<classpath id="cpath">
+				<fileset dir="${kettlelib}"		includes="*.jar"/>
+				<fileset dir="${libext}" 		includes="*.jar"/>
+				<fileset dir="${libswt}" 		includes="*.jar"/>
+				<fileset dir="${libswt}/win32/" includes="*.jar"/>
+		  		</classpath>
+	    </javac>
+	  </target>
+	
+	  <!-- ==========================
+	          Copy additional files
+	       ==========================
+	  -->
+
+	  <target name="copy" depends="compile" description="copy images etc to classes directory" >
+	  	<echo>Copying images etc to classes directory...</echo>
+	    <copy todir="${classes}">
+	    	<fileset 
+	    		dir="${src}" 
+	    		includes="**/*.png,**/*.xml,**/*.properties"/>
+	  	    </copy>
+	  </target>
+			
+	  <!--
+	       ==========================
+	                library
+	       ==========================
+	  -->
+		
+	  <target name="jar" depends="compile, copy" description="generate the VerticaBulkLoader library jar">
+	  	<echo>Generating the VerticaBulkLoader library jar ...</echo>
+	  	<jar 
+	    	jarfile="${lib}/verticabulkloadplugin.jar" 
+	    	basedir="${classes}" 
+	    	includes="**/*"/>	 
+	  </target>
+
+	  <!--
+	       ==========================
+	           distrib for plugin
+	       ==========================
+	  -->
+
+	  <target name="distrib" depends="jar" description="Create the distribution package..." >
+	  	<echo>Copying libraries to distrib directory...</echo>
+	    <copy todir="${distrib}">
+	    	<fileset 
+	    		dir="${lib}" 
+	    		includes="**/*.jar"/>
+	  	    </copy>
+	  </target>
+
+	  <!--
+	       ==========================
+	            deploy to Kettle
+	       ==========================
+	  -->
+
+	  <target name="deploy" depends="distrib" description="Deploy distribution..." >
+	  	<echo>deploying plugin...</echo>
+	    <copy todir="${deploydir}">
+	    	<fileset 
+	    		dir="${distrib}" 
+	    		includes="**/*.*"/>
+	    	<fileset
+	    		dir="${libext}"
+	    		includes="**/*.*"/>
+	  	    </copy>
+	  </target>
+
+	<!--
+	       ==========================
+	          Default target: all
+	       ==========================
+	  -->
+	<target name="default" depends="deploy" description="default = build all"/>
+
+	<!--
+	       ==========================
+	              C L E A N
+	       ==========================
+	  -->
+
+	  <target name="clean"  description="clean up generated files" >
+	    <delete dir="${classes}"/>
+	    <delete dir="${lib}"/>
+	  </target>
+	
+</project>
