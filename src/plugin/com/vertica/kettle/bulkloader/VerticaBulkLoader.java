@@ -18,7 +18,6 @@ import java.io.OutputStreamWriter;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.sql.SQLException;
-
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
@@ -56,16 +55,18 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
         Object[] r=getRow();    // this also waits for a previous step to be finished.
         if (r==null)  // no more input to be expected...
         {
-            try
-            {
-                data.writer.flush();
-                data.writer.close();
-            }
-            catch (IOException e)
-            {
-                throw new KettleException("I/O Error during statement termination.", e);
-            }
-
+        	if (data.writer != null)
+        	{
+        		try
+        		{
+        			data.writer.flush();
+        			data.writer.close();
+        		}
+        		catch (IOException e)
+        		{
+        			throw new KettleException("I/O Error during statement termination.", e);
+        		}
+        	}
             return false;
         }
 
@@ -82,6 +83,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
             if ( ! meta.specifyFields() )  {
                 // Just take the input row
                 data.insertRowMeta = getInputRowMeta().clone();
+                data.valuenrs = new int[data.insertRowMeta.size()];
             }
             else  {
 
@@ -270,7 +272,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
         try
         {
-            for (int i = 0; i < insertRowData.length; i++)
+            for (int i = 0; i < data.valuenrs.length; i++)
             {
                 if (i > 0) data.writer.write(data.delimiter);
 
@@ -320,10 +322,50 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
                 data.db.setAutoCommit(false);
 
-                data.delimiter = Const.isEmpty(meta.getDelimiter()) ? "\t" : meta.getDelimiter().replace("'", "\\'");
-                data.nullString = Const.isEmpty(meta.getNullString()) ? "\\N" : meta.getNullString().replace("'", "\\'");
-                data.recordTerminator = Const.isEmpty(meta.getRecordTerminator()) ? "\n" : meta.getRecordTerminator().replace("'", "\\'");
+                if (Const.isEmpty(meta.getDelimiter())) {
+                    data.delimiter = "|";
+                } else {
+                    String s = meta.getDelimiter();
+                    s = s.replace("\\0", "\0");
+                    s = s.replace("\\a", "\u0007");
+                    s = s.replace("\\b", "\b");
+                    s = s.replace("\\t", "\t");
+                    s = s.replace("\\n", "\n");
+                    s = s.replace("\\v", "\u0011");
+                    s = s.replace("\\f", "\f");
+                    s = s.replace("\\r", "\r");
+                    data.delimiter = s.replace("'", "\\'");
+                }
 
+                if (Const.isEmpty(meta.getNullString())) {
+                    data.nullString = "";
+                } else {
+                    String s = meta.getNullString();
+                    s = s.replace("\\0", "\0");
+                    s = s.replace("\\a", "\u0007");
+                    s = s.replace("\\b", "\b");
+                    s = s.replace("\\t", "\t");
+                    s = s.replace("\\n", "\n");
+                    s = s.replace("\\v", "\u0011");
+                    s = s.replace("\\f", "\f");
+                    s = s.replace("\\r", "\r");
+                    data.nullString = s.replace("'", "\\'");
+                }
+
+                if (Const.isEmpty(meta.getRecordTerminator())) {
+                    data.recordTerminator = "\n";
+                } else {
+                    String s = meta.getRecordTerminator();
+                    s = s.replace("\\0", "\0");
+                    s = s.replace("\\a", "\u0007");
+                    s = s.replace("\\b", "\b");
+                    s = s.replace("\\t", "\t");
+                    s = s.replace("\\n", "\n");
+                    s = s.replace("\\v", "\u0011");
+                    s = s.replace("\\f", "\f");
+                    s = s.replace("\\r", "\r");
+                    data.recordTerminator = s.replace("'", "\\'");
+                }
                 return true;
             }
             catch(KettleException e)
@@ -341,23 +383,25 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
     throws KettleException
     {
         setStopped(true);
-        synchronized (data.workerThread)
+        if (data.workerThread != null)
         {
-            if (data.workerThread.isAlive() && !data.workerThread.isInterrupted())
-            {
-                try
-                {
-                    data.workerThread.interrupt();
-                    data.workerThread.join();
-                }
-                catch (InterruptedException e)
-                {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                }
-            }
+        	synchronized (data.workerThread)
+        	{
+        		if (data.workerThread.isAlive() && !data.workerThread.isInterrupted())
+        		{
+        			try
+        			{
+        				data.workerThread.interrupt();
+        				data.workerThread.join();
+        			}
+        			catch (InterruptedException e)
+        			{
+        				// TODO Auto-generated catch block
+        				e.printStackTrace();
+        			}
+        		}
+        	}
         }
-
         super.stopRunning(stepMetaInterface, stepDataInterface);
     }
 
@@ -380,16 +424,19 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
             }
         }
 
-        try
+        if (data.workerThread != null)
         {
-            data.workerThread.join();
+        	try
+        	{
+        		data.workerThread.join();
+        	}
+        	catch (InterruptedException e)
+        	{
+        		// TODO Auto-generated catch block
+        		e.printStackTrace();
+        	}
         }
-        catch (InterruptedException e)
-        {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-
+        
         if (data.db!=null) {
             data.db.disconnect();
         }
