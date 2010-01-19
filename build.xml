@@ -6,6 +6,8 @@
 
 	  <tstamp prefix="start"/>
 
+	  <property file="override.properties"/>
+
 	  <!-- system properties to use -->
 	  <property name= "cr" value="${line.separator}"/> 
 		
@@ -16,9 +18,6 @@
 	  <property name="lib"        			location="lib"/>
 	  <property name="distrib"        		location="distrib"/>
 	  <property name="libext"     			location="libext"/>
-      <property name="libswt"     			location="../../trunk/libswt"/>
-      <property name="kettlelib"	     	location="../../trunk/distrib/lib"/>
-      <property name="deploydir"     		location="../../trunk/distrib/libext"/>
 	
 	  <target name="init" description="create timestamp and directories">
     	<echo>Init...</echo>
@@ -100,7 +99,15 @@
 
 	  <target name="deploy" depends="distrib" description="Deploy distribution..." >
 	  	<echo>deploying plugin...</echo>
-	    <copy todir="${deploydir}">
+	    <copy todir="${deploydir1}">
+	    	<fileset 
+	    		dir="${distrib}" 
+	    		includes="**/*.*"/>
+	    	<fileset
+	    		dir="${libext}"
+	    		includes="**/*.*"/>
+	  	    </copy>
+	    <copy todir="${deploydir2}">
 	    	<fileset 
 	    		dir="${distrib}" 
 	    		includes="**/*.*"/>

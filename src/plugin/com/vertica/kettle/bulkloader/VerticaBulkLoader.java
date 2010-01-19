@@ -160,6 +160,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
                     try
                     {
                         statement.executeCopyIn(dml, sink);
+                        data.db.disconnect();
                     }
                     catch (SQLException e)
                     {
@@ -306,7 +307,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
             {
                 data.databaseMeta = meta.getDatabaseMeta();
 
-                data.db=new Database(meta.getDatabaseMeta());
+                data.db=new Database(this, meta.getDatabaseMeta());
                 data.db.shareVariablesWith(this);
 
                 if (getTransMeta().isUsingUniqueConnections())
