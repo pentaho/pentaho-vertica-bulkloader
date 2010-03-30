@@ -54,8 +54,7 @@ import org.w3c.dom.Node;
     <image-uri>ui/images/BulkIn.png</image-uri>
 </step>
  */
-@Step(name = "VerticaBulkLoader", image = "ui/images/BulkIn.png",
-		tooltip = "VerticaBulkLoaderMeta.TypeTooltipDesc", 
+@Step(id = "VerticaBulkLoader", name = "VerticaBulkLoader", image = "ui/images/BulkIn.png",
 		description = "VerticaBulkLoaderMeta.TypeLongDesc",
 		categoryDescription = "BaseStep.Category.Experimental",
 		i18nPackageName = "org.pentaho.di.trans.step")
