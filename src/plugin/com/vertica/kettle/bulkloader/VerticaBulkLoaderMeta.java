@@ -19,7 +19,6 @@ import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Counter;
 import org.pentaho.di.core.SQLStatement;
-import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
@@ -41,23 +40,6 @@ import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.w3c.dom.Node;
 
-/* Step definition if it were a native step:
-<step id="VerticaBulkLoader">
-    <description>
-        ognl:@org.pentaho.di.trans.step.Messages@getString("VerticaBulkLoaderMeta.TypeLongDesc")
-    </description>
-    <class-name>org.pentaho.di.trans.steps.verticabulkloader.VerticaBulkLoaderMeta</class-name>
-    <category>ognl:@org.pentaho.di.trans.step.StepCategory@EXPERIMENTAL.getName()</category>
-    <tooltip>
-        ognl:@org.pentaho.di.trans.step.Messages@getString("VerticaBulkLoaderMeta.TypeTooltipDesc")
-    </tooltip>
-    <image-uri>ui/images/BulkIn.png</image-uri>
-</step>
- */
-@Step(id = "VerticaBulkLoader", name = "VerticaBulkLoader", image = "ui/images/BulkIn.png",
-		description = "VerticaBulkLoaderMeta.TypeLongDesc",
-		categoryDescription = "BaseStep.Category.Experimental",
-		i18nPackageName = "org.pentaho.di.trans.step")
 public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface
 {
 	private DatabaseMeta databaseMeta;
