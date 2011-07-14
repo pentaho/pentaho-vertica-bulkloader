@@ -22,6 +22,7 @@ Statement canceling - If the transformation aborts, the step receives an excepti
   report this error or not, and Vertica logs some errors that I'd rather avoid seeing.  Need a better way
   to cancel an in-process stream.
 
+Update to Vertica 4.0 and 5.0 - Most important is utilizing the new bulk loading features in those versions.
   
 TEST PLAN:
 
