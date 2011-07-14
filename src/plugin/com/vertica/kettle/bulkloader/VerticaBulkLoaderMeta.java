@@ -28,6 +28,7 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
+import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.repository.*;
 import org.pentaho.di.shared.SharedObjectInterface;
 import org.pentaho.di.trans.DatabaseImpact;
@@ -42,6 +43,8 @@ import org.w3c.dom.Node;
 
 public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface
 {
+	private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
+
 	private DatabaseMeta databaseMeta;
 	private String       schemaName;
 	private String       tablename;
@@ -399,7 +402,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 	{
 		if (databaseMeta!=null)
 		{
-			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.ConnectionExists"), stepMeta);
+			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.ConnectionExists"), stepMeta);
 			remarks.add(cr);
 
 			Database db = new Database(transMeta, databaseMeta);
@@ -408,7 +411,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 			{
 				db.connect();
 
-				cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.ConnectionOk"), stepMeta);
+				cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.ConnectionOk"), stepMeta);
 				remarks.add(cr);
 
                 if (!Const.isEmpty(transMeta.environmentSubstitute(tablename)))
@@ -417,13 +420,13 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 					// Check if this table exists...
 					if (db.checkTableExists(schemaTable))
 					{
-						cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.TableAccessible", schemaTable), stepMeta);
+						cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.TableAccessible", schemaTable), stepMeta);
 						remarks.add(cr);
 
 						RowMetaInterface r = db.getTableFields(schemaTable);
 						if (r!=null)
 						{
-							cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.TableOk", schemaTable), stepMeta);
+							cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.TableOk", schemaTable), stepMeta);
 							remarks.add(cr);
 
 							String error_message = "";
@@ -432,7 +435,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 							// Now see what we can find as previous step...
 							if (prev!=null && prev.size()>0)
 							{
-								cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.FieldsReceived", ""+prev.size()), stepMeta);
+								cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.FieldsReceived", ""+prev.size()), stepMeta);
 								remarks.add(cr);
 
 								if ( ! specifyFields() )  {
@@ -449,14 +452,14 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 									}
 									if (error_found) 
 									{
-										error_message=Messages.getString("VerticaBulkLoaderMeta.CheckResult.FieldsNotFoundInOutput", error_message);
+										error_message=BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.FieldsNotFoundInOutput", error_message);
 
 										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, error_message, stepMeta);
 										remarks.add(cr);
 									}
 									else
 									{
-										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.AllFieldsFoundInOutput"), stepMeta);
+										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.AllFieldsFoundInOutput"), stepMeta);
 										remarks.add(cr);
 									}
 								}
@@ -473,14 +476,14 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 									}
 									if (error_found) 
 									{
-										error_message=Messages.getString("VerticaBulkLoaderMeta.CheckResult.FieldsSpecifiedNotInTable", error_message);
+										error_message=BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.FieldsSpecifiedNotInTable", error_message);
 
 										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, error_message, stepMeta);
 										remarks.add(cr);
 									}
 									else
 									{
-										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.AllFieldsFoundInOutput"), stepMeta);
+										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.AllFieldsFoundInOutput"), stepMeta);
 										remarks.add(cr);
 									}
 								}
@@ -500,14 +503,14 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 									}
 									if (error_found) 
 									{
-										error_message=Messages.getString("VerticaBulkLoaderMeta.CheckResult.FieldsNotFound", error_message);
+										error_message=BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.FieldsNotFound", error_message);
 
 										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_WARNING, error_message, stepMeta);
 										remarks.add(cr);
 									}
 									else
 									{
-										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.AllFieldsFound"), stepMeta);
+										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.AllFieldsFound"), stepMeta);
 										remarks.add(cr);
 									}
 								}
@@ -524,45 +527,45 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 									}
 									if (error_found) 
 									{
-										error_message=Messages.getString("VerticaBulkLoaderMeta.CheckResult.FieldsSpecifiedNotFound", error_message);
+										error_message=BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.FieldsSpecifiedNotFound", error_message);
 
 										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, error_message, stepMeta);
 										remarks.add(cr);
 									}
 									else
 									{
-										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.AllFieldsFound"), stepMeta);
+										cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.AllFieldsFound"), stepMeta);
 										remarks.add(cr);
 									}									
 								}							
 							}
 							else
 							{
-								cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.NoFields"), stepMeta);
+								cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.NoFields"), stepMeta);
 								remarks.add(cr);
 							}
 						}
 						else
 						{
-							cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.TableNotAccessible"), stepMeta);
+							cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.TableNotAccessible"), stepMeta);
 							remarks.add(cr);
 						}
 					}
 					else
 					{
-						cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.TableError", schemaTable), stepMeta);
+						cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.TableError", schemaTable), stepMeta);
 						remarks.add(cr);
 					}
 				}
 				else
 				{
-					cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.NoTableName"), stepMeta);
+					cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.NoTableName"), stepMeta);
 					remarks.add(cr);
 				}
 			}
 			catch(KettleException e)
 			{
-				cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.UndefinedError", e.getMessage()), stepMeta);
+				cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.UndefinedError", e.getMessage()), stepMeta);
 				remarks.add(cr);
 			}
 			finally
@@ -572,19 +575,19 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		}
 		else
 		{
-			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.NoConnection"), stepMeta);
+			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.NoConnection"), stepMeta);
 			remarks.add(cr);
 		}
 
 		// See if we have input streams leading to this step!
 		if (input.length>0)
 		{
-			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.ExpectedInputOk"), stepMeta);
+			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.ExpectedInputOk"), stepMeta);
 			remarks.add(cr);
 		}
 		else
 		{
-			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.ExpectedInputError"), stepMeta);
+			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.ExpectedInputError"), stepMeta);
 			remarks.add(cr);
 		}
 
@@ -592,12 +595,12 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		{
 			if (getDelimiter().length() == 1)
 			{
-				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, Messages.getString("VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterOk"), stepMeta);
+				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterOk"), stepMeta);
 				remarks.add(cr);
 			}
 			else
 			{
-				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, Messages.getString("VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterError"), stepMeta);
+				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterError"), stepMeta);
 				remarks.add(cr);
 			}
 		}
@@ -663,7 +666,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 					}
 					catch(KettleDatabaseException dbe)
 					{
-						retval.setError(Messages.getString("VerticaBulkLoaderMeta.Error.ErrorConnecting", dbe.getMessage()));
+						retval.setError(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Error.ErrorConnecting", dbe.getMessage()));
 					}
 					finally
 					{
@@ -672,17 +675,17 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 				}
 				else
 				{
-					retval.setError(Messages.getString("VerticaBulkLoaderMeta.Error.NoTable"));
+					retval.setError(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Error.NoTable"));
 				}
 			}
 			else
 			{
-				retval.setError(Messages.getString("VerticaBulkLoaderMeta.Error.NoInput"));
+				retval.setError(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Error.NoInput"));
 			}
 		}
 		else
 		{
-			retval.setError(Messages.getString("VerticaBulkLoaderMeta.Error.NoConnection"));
+			retval.setError(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Error.NoConnection"));
 		}
 
 		return retval;
@@ -711,17 +714,17 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 					}
 					else
 					{
-						throw new KettleException(Messages.getString("VerticaBulkLoaderMeta.Exception.TableNotFound"));
+						throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.TableNotFound"));
 					}
 				}
 				else
 				{
-					throw new KettleException(Messages.getString("VerticaBulkLoaderMeta.Exception.TableNotSpecified"));
+					throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.TableNotSpecified"));
 				}
 			}
 			catch(Exception e)
 			{
-				throw new KettleException(Messages.getString("VerticaBulkLoaderMeta.Exception.ErrorGettingFields"), e);
+				throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.ErrorGettingFields"), e);
 			}
 			finally
 			{
@@ -730,7 +733,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		}
 		else
 		{
-			throw new KettleException(Messages.getString("VerticaBulkLoaderMeta.Exception.ConnectionNotDefined"));
+			throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.ConnectionNotDefined"));
 		}
 
 	}

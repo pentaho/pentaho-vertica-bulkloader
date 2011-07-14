@@ -55,6 +55,7 @@ import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDialogInterface;
@@ -78,6 +79,8 @@ import org.pentaho.di.ui.trans.step.BaseStepDialog;
  */
 public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialogInterface
 {
+	private static Class<?> PKG = VerticaBulkLoaderDialog.class; // for i18n purposes, needed by Translator2!!
+
 	private CTabFolder   wTabFolder;
 	private FormData     fdTabFolder;
 
@@ -197,11 +200,11 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		formLayout.marginHeight = Const.FORM_MARGIN;
 
 		shell.setLayout(formLayout);
-		shell.setText(Messages.getString("VerticaBulkLoaderDialog.DialogTitle"));
+		shell.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DialogTitle"));
 		
 		// Stepname line
 		wlStepname=new Label(shell, SWT.RIGHT);
-		wlStepname.setText(Messages.getString("System.Label.StepName"));
+		wlStepname.setText(BaseMessages.getString("System.Label.StepName"));
  		props.setLook(wlStepname);
 		fdlStepname=new FormData();
 		fdlStepname.left = new FormAttachment(0, 0);
@@ -228,7 +231,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // Schema line...
         wlSchema=new Label(shell, SWT.RIGHT);
-        wlSchema.setText(Messages.getString("VerticaBulkLoaderDialog.TargetSchema.Label")); //$NON-NLS-1$
+        wlSchema.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.TargetSchema.Label")); //$NON-NLS-1$
         props.setLook(wlSchema);
         fdlSchema=new FormData();
         fdlSchema.left = new FormAttachment(0, 0);
@@ -248,7 +251,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
 		// Table line...
 		wlTable=new Label(shell, SWT.RIGHT);
-		wlTable.setText(Messages.getString("VerticaBulkLoaderDialog.TargetTable.Label"));
+		wlTable.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.TargetTable.Label"));
  		props.setLook(wlTable);
 		fdlTable=new FormData();
 		fdlTable.left = new FormAttachment(0, 0);
@@ -258,7 +261,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
 		wbTable=new Button(shell, SWT.PUSH| SWT.CENTER);
  		props.setLook(wbTable);
-		wbTable.setText(Messages.getString("System.Button.Browse"));
+		wbTable.setText(BaseMessages.getString("System.Button.Browse"));
 		fdbTable=new FormData();
 		fdbTable.right= new FormAttachment(100, 0);
 		fdbTable.top  = new FormAttachment(wSchema, margin);
@@ -284,7 +287,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
 		// Specify fields
 		wlSpecifyFields=new Label(shell, SWT.RIGHT);
-		wlSpecifyFields.setText(Messages.getString("VerticaBulkLoaderDialog.SpecifyFields.Label"));
+		wlSpecifyFields.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.SpecifyFields.Label"));
  		props.setLook(wlSpecifyFields);
 		fdlSpecifyFields=new FormData();
 		fdlSpecifyFields.left  = new FormAttachment(0, 0);
@@ -318,7 +321,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		// START OF KEY TAB    ///
 		///
 		wMainTab=new CTabItem(wTabFolder, SWT.NONE);
-		wMainTab.setText(Messages.getString("VerticaBulkLoaderDialog.MainTab.CTabItem")); //$NON-NLS-1$
+		wMainTab.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.MainTab.CTabItem")); //$NON-NLS-1$
 
 		FormLayout mainLayout = new FormLayout ();
 		mainLayout.marginWidth  = 3;
@@ -337,8 +340,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // Insert directly to ROS
         wlDirect=new Label(wMainComp, SWT.RIGHT);
-        wlDirect.setText(Messages.getString("VerticaBulkLoaderDialog.InsertDirect.Label"));
-        wlDirect.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.InsertDirect.Tooltip"));
+        wlDirect.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.InsertDirect.Label"));
+        wlDirect.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.InsertDirect.Tooltip"));
         props.setLook(wlDirect);
         fdlDirect=new FormData();
         fdlDirect.left  = new FormAttachment(0, 0);
@@ -346,7 +349,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         fdlDirect.right = new FormAttachment(middle, -margin);
         wlDirect.setLayoutData(fdlDirect);
         wDirect=new Button(wMainComp, SWT.CHECK);
-        wDirect.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.InsertDirect.Tooltip"));
+        wDirect.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.InsertDirect.Tooltip"));
         props.setLook(wDirect);
         fdDirect=new FormData();
         fdDirect.left  = new FormAttachment(middle, 0);
@@ -356,8 +359,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         
         // Abort on error
         wlAbortOnError=new Label(wMainComp, SWT.RIGHT);
-        wlAbortOnError.setText(Messages.getString("VerticaBulkLoaderDialog.AbortOnError.Label"));
-        wlAbortOnError.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.AbortOnError.Tooltip"));
+        wlAbortOnError.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.AbortOnError.Label"));
+        wlAbortOnError.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.AbortOnError.Tooltip"));
         props.setLook(wlAbortOnError);
         fdlAbortOnError=new FormData();
         fdlAbortOnError.left  = new FormAttachment(0, 0);
@@ -365,7 +368,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         fdlAbortOnError.right = new FormAttachment(middle, -margin);
         wlAbortOnError.setLayoutData(fdlAbortOnError);
         wAbortOnError=new Button(wMainComp, SWT.CHECK);
-        wAbortOnError.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.AbortOnError.Tooltip"));
+        wAbortOnError.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.AbortOnError.Tooltip"));
         props.setLook(wAbortOnError);
         fdAbortOnError=new FormData();
         fdAbortOnError.left  = new FormAttachment(middle, 0);
@@ -375,8 +378,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         
         // Delimiter line...
         wlDelimiter=new Label(wMainComp, SWT.RIGHT);
-        wlDelimiter.setText(Messages.getString("VerticaBulkLoaderDialog.Delimiter.Label")); //$NON-NLS-1$
-        wlDelimiter.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
+        wlDelimiter.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Label")); //$NON-NLS-1$
+        wlDelimiter.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
         props.setLook(wlDelimiter);
         fdlDelimiter=new FormData();
         fdlDelimiter.left = new FormAttachment(0, 0);
@@ -385,7 +388,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlDelimiter.setLayoutData(fdlDelimiter);
 
         wDelimiter=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wDelimiter.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
+        wDelimiter.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
         props.setLook(wDelimiter);
         wDelimiter.addModifyListener(lsMod);
         wDelimiter.addFocusListener(lsFocusLost);
@@ -397,8 +400,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // NullString line...
         wlNullString=new Label(wMainComp, SWT.RIGHT);
-        wlNullString.setText(Messages.getString("VerticaBulkLoaderDialog.NullString.Label")); //$NON-NLS-1$
-        wlNullString.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
+        wlNullString.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Label")); //$NON-NLS-1$
+        wlNullString.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
         props.setLook(wlNullString);
         fdlNullString=new FormData();
         fdlNullString.left = new FormAttachment(0, 0);
@@ -407,7 +410,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlNullString.setLayoutData(fdlNullString);
 
         wNullString=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wNullString.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
+        wNullString.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
         props.setLook(wNullString);
         wNullString.addModifyListener(lsMod);
         wNullString.addFocusListener(lsFocusLost);
@@ -419,8 +422,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // RecordTerminator line...
         wlRecordTerminator=new Label(wMainComp, SWT.RIGHT);
-        wlRecordTerminator.setText(Messages.getString("VerticaBulkLoaderDialog.RecordTerminator.Label")); //$NON-NLS-1$
-        wlRecordTerminator.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
+        wlRecordTerminator.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Label")); //$NON-NLS-1$
+        wlRecordTerminator.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
         props.setLook(wlRecordTerminator);
         fdlRecordTerminator=new FormData();
         fdlRecordTerminator.left = new FormAttachment(0, 0);
@@ -429,7 +432,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlRecordTerminator.setLayoutData(fdlRecordTerminator);
 
         wRecordTerminator=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wRecordTerminator.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
+        wRecordTerminator.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
         props.setLook(wRecordTerminator);
         wRecordTerminator.addModifyListener(lsMod);
         wRecordTerminator.addFocusListener(lsFocusLost);
@@ -441,8 +444,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // ExceptionsLogFile line...
         wlExceptionsLogFile=new Label(wMainComp, SWT.RIGHT);
-        wlExceptionsLogFile.setText(Messages.getString("VerticaBulkLoaderDialog.ExceptionsLogFile.Label")); //$NON-NLS-1$
-        wlExceptionsLogFile.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.ExceptionsLogFile.Tooltip")); //$NON-NLS-1$
+        wlExceptionsLogFile.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ExceptionsLogFile.Label")); //$NON-NLS-1$
+        wlExceptionsLogFile.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ExceptionsLogFile.Tooltip")); //$NON-NLS-1$
         props.setLook(wlExceptionsLogFile);
         fdlExceptionsLogFile=new FormData();
         fdlExceptionsLogFile.left = new FormAttachment(0, 0);
@@ -451,7 +454,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlExceptionsLogFile.setLayoutData(fdlExceptionsLogFile);
 
         wExceptionsLogFile=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wExceptionsLogFile.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.ExceptionsLogFile.Tooltip")); //$NON-NLS-1$
+        wExceptionsLogFile.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ExceptionsLogFile.Tooltip")); //$NON-NLS-1$
         props.setLook(wExceptionsLogFile);
         wExceptionsLogFile.addModifyListener(lsMod);
         wExceptionsLogFile.addFocusListener(lsFocusLost);
@@ -463,8 +466,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // RejectedDataLogFile line...
         wlRejectedDataLogFile=new Label(wMainComp, SWT.RIGHT);
-        wlRejectedDataLogFile.setText(Messages.getString("VerticaBulkLoaderDialog.RejectedDataLogFile.Label")); //$NON-NLS-1$
-        wlRejectedDataLogFile.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.RejectedDataLogFile.Tooltip")); //$NON-NLS-1$
+        wlRejectedDataLogFile.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RejectedDataLogFile.Label")); //$NON-NLS-1$
+        wlRejectedDataLogFile.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RejectedDataLogFile.Tooltip")); //$NON-NLS-1$
         props.setLook(wlRejectedDataLogFile);
         fdlRejectedDataLogFile=new FormData();
         fdlRejectedDataLogFile.left = new FormAttachment(0, 0);
@@ -473,7 +476,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlRejectedDataLogFile.setLayoutData(fdlRejectedDataLogFile);
 
         wRejectedDataLogFile=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wRejectedDataLogFile.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.RejectedDataLogFile.Tooltip")); //$NON-NLS-1$
+        wRejectedDataLogFile.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RejectedDataLogFile.Tooltip")); //$NON-NLS-1$
         props.setLook(wRejectedDataLogFile);
         wRejectedDataLogFile.addModifyListener(lsMod);
         wRejectedDataLogFile.addFocusListener(lsFocusLost);
@@ -485,8 +488,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
         // StreamName line...
         wlStreamName=new Label(wMainComp, SWT.RIGHT);
-        wlStreamName.setText(Messages.getString("VerticaBulkLoaderDialog.StreamName.Label")); //$NON-NLS-1$
-        wlStreamName.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.StreamName.Tooltip")); //$NON-NLS-1$
+        wlStreamName.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.StreamName.Label")); //$NON-NLS-1$
+        wlStreamName.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.StreamName.Tooltip")); //$NON-NLS-1$
         props.setLook(wlStreamName);
         fdlStreamName=new FormData();
         fdlStreamName.left = new FormAttachment(0, 0);
@@ -495,7 +498,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wlStreamName.setLayoutData(fdlStreamName);
 
         wStreamName=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wStreamName.setToolTipText(Messages.getString("VerticaBulkLoaderDialog.StreamName.Tooltip")); //$NON-NLS-1$
+        wStreamName.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.StreamName.Tooltip")); //$NON-NLS-1$
         props.setLook(wStreamName);
         wStreamName.addModifyListener(lsMod);
         wStreamName.addFocusListener(lsFocusLost);
@@ -513,7 +516,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		// Fields tab...
 		//
 		wFieldsTab = new CTabItem(wTabFolder, SWT.NONE);
-		wFieldsTab.setText(Messages.getString("VerticaBulkLoaderDialog.FieldsTab.CTabItem.Title")); //$NON-NLS-1$
+		wFieldsTab.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.FieldsTab.CTabItem.Title")); //$NON-NLS-1$
 
 		Composite wFieldsComp = new Composite(wTabFolder, SWT.NONE);
         props.setLook(wFieldsComp);
@@ -525,7 +528,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 
 		// The fields table
 		wlFields=new Label(wFieldsComp, SWT.NONE);
-		wlFields.setText(Messages.getString("VerticaBulkLoaderDialog.InsertFields.Label")); //$NON-NLS-1$
+		wlFields.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.InsertFields.Label")); //$NON-NLS-1$
  		props.setLook(wlFields);
 		FormData fdlUpIns=new FormData();
 		fdlUpIns.left  = new FormAttachment(0, 0);
@@ -536,8 +539,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		int UpInsRows= (input.getFieldStream()!=null?input.getFieldStream().length:1);
 
 		ciFields=new ColumnInfo[tableCols];
-		ciFields[0]=new ColumnInfo(Messages.getString("VerticaBulkLoaderDialog.ColumnInfo.TableField"),  ColumnInfo.COLUMN_TYPE_CCOMBO, new String[] { "" }, false); //$NON-NLS-1$
-		ciFields[1]=new ColumnInfo(Messages.getString("VerticaBulkLoaderDialog.ColumnInfo.StreamField"), ColumnInfo.COLUMN_TYPE_CCOMBO, new String[] { "" }, false); //$NON-NLS-1$
+		ciFields[0]=new ColumnInfo(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ColumnInfo.TableField"),  ColumnInfo.COLUMN_TYPE_CCOMBO, new String[] { "" }, false); //$NON-NLS-1$
+		ciFields[1]=new ColumnInfo(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ColumnInfo.StreamField"), ColumnInfo.COLUMN_TYPE_CCOMBO, new String[] { "" }, false); //$NON-NLS-1$
 		tableFieldColumns.add(ciFields[0]);
 		wFields=new TableView(transMeta, wFieldsComp,
 							  SWT.BORDER | SWT.FULL_SELECTION | SWT.MULTI | SWT.V_SCROLL | SWT.H_SCROLL,
@@ -548,14 +551,14 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 							  );
 		
 		wGetFields = new Button(wFieldsComp, SWT.PUSH);
-		wGetFields.setText(Messages.getString("VerticaBulkLoaderDialog.GetFields.Button")); //$NON-NLS-1$
+		wGetFields.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.GetFields.Button")); //$NON-NLS-1$
 		fdGetFields = new FormData();
 		fdGetFields.top   = new FormAttachment(wlFields, margin);
 		fdGetFields.right = new FormAttachment(100, 0);
 		wGetFields.setLayoutData(fdGetFields);
 		
 		wDoMapping = new Button(wFieldsComp, SWT.PUSH);
-		wDoMapping.setText(Messages.getString("VerticaBulkLoaderDialog.DoMapping.Button")); //$NON-NLS-1$
+		wDoMapping.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.Button")); //$NON-NLS-1$
 		fdDoMapping = new FormData();
 		fdDoMapping.top   = new FormAttachment(wGetFields, margin);
 		fdDoMapping.right = new FormAttachment(100, 0);
@@ -606,7 +609,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
                     }
                     catch(KettleException e)
                     {
-                    	log.logError(toString(),Messages.getString("System.Dialog.GetFieldsFailed.Message"));
+                    	log.logError(toString(),BaseMessages.getString("System.Dialog.GetFieldsFailed.Message"));
                     }
                 }
             }
@@ -615,11 +618,11 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
      
 		// Some buttons
 		wOK=new Button(shell, SWT.PUSH);
-		wOK.setText(Messages.getString("System.Button.OK"));
+		wOK.setText(BaseMessages.getString("System.Button.OK"));
 		wCreate=new Button(shell, SWT.PUSH);
-		wCreate.setText(Messages.getString("System.Button.SQL"));
+		wCreate.setText(BaseMessages.getString("System.Button.SQL"));
 		wCancel=new Button(shell, SWT.PUSH);
-		wCancel.setText(Messages.getString("System.Button.Cancel"));
+		wCancel.setText(BaseMessages.getString("System.Button.Cancel"));
 		
 		setButtonPositions(new Button[] { wOK, wCancel , wCreate }, margin, null);
 
@@ -695,7 +698,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 			try {
 				sourceFields = transMeta.getPrevStepFields(stepMeta);
 			} catch(KettleException e) {
-				new ErrorDialog(shell, Messages.getString("VerticaBulkLoaderDialog.DoMapping.UnableToFindSourceFields.Title"), Messages.getString("VerticaBulkLoaderDialog.DoMapping.UnableToFindSourceFields.Message"), e);
+				new ErrorDialog(shell, BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.UnableToFindSourceFields.Title"), BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.UnableToFindSourceFields.Message"), e);
 				return;
 			}
 			
@@ -706,7 +709,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 			try {
 				targetFields = stepMetaInterface.getRequiredFields(transMeta);
 			} catch (KettleException e) {
-				new ErrorDialog(shell, Messages.getString("VerticaBulkLoaderDialog.DoMapping.UnableToFindTargetFields.Title"), Messages.getString("VerticaBulkLoaderDialog.DoMapping.UnableToFindTargetFields.Message"), e);
+				new ErrorDialog(shell, BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.UnableToFindTargetFields.Title"), BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.UnableToFindTargetFields.Message"), e);
 				return;
 			}
 
@@ -751,14 +754,14 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 				
 				String message="";
 				if (missingSourceFields.length()>0) {
-					message+=Messages.getString("VerticaBulkLoaderDialog.DoMapping.SomeSourceFieldsNotFound", missingSourceFields.toString())+Const.CR;
+					message+=BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.SomeSourceFieldsNotFound", missingSourceFields.toString())+Const.CR;
 				}
 				if (missingTargetFields.length()>0) {
-					message+=Messages.getString("VerticaBulkLoaderDialog.DoMapping.SomeTargetFieldsNotFound", missingSourceFields.toString())+Const.CR;
+					message+=BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.SomeTargetFieldsNotFound", missingSourceFields.toString())+Const.CR;
 				}
 				message+=Const.CR;
-				message+=Messages.getString("VerticaBulkLoaderDialog.DoMapping.SomeFieldsNotFoundContinue")+Const.CR;
-				boolean goOn = MessageDialog.openConfirm(shell, Messages.getString("VerticaBulkLoaderDialog.DoMapping.SomeFieldsNotFoundTitle"), message);
+				message+=BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.SomeFieldsNotFoundContinue")+Const.CR;
+				boolean goOn = MessageDialog.openConfirm(shell, BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.DoMapping.SomeFieldsNotFoundTitle"), message);
 				if (!goOn) {
 					return;
 				}
@@ -933,8 +936,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		if (input.getDatabaseMeta()==null)
 		{
 			MessageBox mb = new MessageBox(shell, SWT.OK | SWT.ICON_ERROR );
-			mb.setMessage(Messages.getString("VerticaBulkLoaderDialog.ConnectionError.DialogMessage"));
-			mb.setText(Messages.getString("System.Dialog.Error.Title"));
+			mb.setMessage(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ConnectionError.DialogMessage"));
+			mb.setText(BaseMessages.getString("System.Dialog.Error.Title"));
 			mb.open();
 		}
 		
@@ -949,7 +952,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		{
 			DatabaseMeta inf = transMeta.getDatabase(connr);
 						
-			log.logDebug(toString(), Messages.getString("VerticaBulkLoaderDialog.Log.LookingAtConnection", inf.toString()));
+			log.logDebug(toString(), BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Log.LookingAtConnection", inf.toString()));
 		
 			DatabaseExplorerDialog std = new DatabaseExplorerDialog(shell, SWT.NONE, inf, transMeta.getDatabases());
             std.setSelectedSchemaAndTable(wSchema.getText(), wTable.getText());
@@ -962,8 +965,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		else
 		{
 			MessageBox mb = new MessageBox(shell, SWT.OK | SWT.ICON_ERROR );
-			mb.setMessage(Messages.getString("VerticaBulkLoaderDialog.ConnectionError2.DialogMessage"));
-			mb.setText(Messages.getString("System.Dialog.Error.Title"));
+			mb.setMessage(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ConnectionError2.DialogMessage"));
+			mb.setText(BaseMessages.getString("System.Dialog.Error.Title"));
 			mb.open(); 
 		}
 					
@@ -985,8 +988,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		catch(KettleException ke)
 		{
 			new ErrorDialog(shell, 
-					        Messages.getString("VerticaBulkLoaderDialog.FailedToGetFields.DialogTitle"), 
-					        Messages.getString("VerticaBulkLoaderDialog.FailedToGetFields.DialogMessage"), ke); //$NON-NLS-1$ //$NON-NLS-2$
+					        BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.FailedToGetFields.DialogTitle"), 
+					        BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.FailedToGetFields.DialogMessage"), ke); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 
 	}	
@@ -1017,7 +1020,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         			    prevNew.addValueMeta( insertValue );
         		    }
         		    else  {
-        			    throw new KettleStepException(Messages.getString("VerticaBulkLoaderDialog.FailedToFindField.Message", info.getFieldStream()[i]));  //$NON-NLS-1$
+        			    throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.FailedToFindField.Message", info.getFieldStream()[i]));  //$NON-NLS-1$
         			}
         	    }
         	    prev = prevNew;
@@ -1034,8 +1037,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 				else
 				{
 					MessageBox mb = new MessageBox(shell, SWT.OK | SWT.ICON_INFORMATION );
-					mb.setMessage(Messages.getString("VerticaBulkLoaderDialog.NoSQL.DialogMessage"));
-					mb.setText(Messages.getString("VerticaBulkLoaderDialog.NoSQL.DialogTitle"));
+					mb.setMessage(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NoSQL.DialogMessage"));
+					mb.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NoSQL.DialogTitle"));
 					mb.open(); 
 				}
 			}
@@ -1043,13 +1046,13 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 			{
 				MessageBox mb = new MessageBox(shell, SWT.OK | SWT.ICON_ERROR );
 				mb.setMessage(sql.getError());
-				mb.setText(Messages.getString("System.Dialog.Error.Title"));
+				mb.setText(BaseMessages.getString("System.Dialog.Error.Title"));
 				mb.open(); 
 			}
 		}
 		catch(KettleException ke)
 		{
-			new ErrorDialog(shell, Messages.getString("VerticaBulkLoaderDialog.BuildSQLError.DialogTitle"), Messages.getString("VerticaBulkLoaderDialog.BuildSQLError.DialogMessage"), ke);
+			new ErrorDialog(shell, BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.BuildSQLError.DialogTitle"), BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.BuildSQLError.DialogMessage"), ke);
 		}
 	}
 

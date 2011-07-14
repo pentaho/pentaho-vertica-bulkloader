@@ -27,6 +27,7 @@ import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.BaseStep;
@@ -39,6 +40,8 @@ import com.vertica.PGStatement;
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface
 {
+	private static Class<?> PKG = VerticaBulkLoader.class; // for i18n purposes, needed by Translator2!!
+
     private VerticaBulkLoaderMeta meta;
     private VerticaBulkLoaderData data;
 
@@ -98,7 +101,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
                     data.valuenrs[i]=getInputRowMeta().indexOfValue(meta.getFieldStream()[i]);
                     if (data.valuenrs[i]<0)
                     {
-                        throw new KettleStepException(Messages.getString("VerticaBulkLoader.Exception.FieldRequired",meta.getFieldStream()[i])); //$NON-NLS-1$
+                        throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FieldRequired",meta.getFieldStream()[i])); //$NON-NLS-1$
                     }
                 }
 
@@ -112,7 +115,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
                         data.insertRowMeta.addValueMeta( insertValue );
                     }
                     else  {
-                        throw new KettleStepException(Messages.getString("VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[i])); //$NON-NLS-1$ 
+                        throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[i])); //$NON-NLS-1$ 
                     }
                 }            	
             }
