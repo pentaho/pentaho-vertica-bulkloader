@@ -98,19 +98,6 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 	private TextVar      wTable;
 	private FormData     fdlTable, fdbTable, fdTable;
 
-
-    private Label        wlDelimiter;
-    private TextVar      wDelimiter;
-    private FormData     fdlDelimiter, fdDelimiter;
-
-    private Label        wlNullString;
-    private TextVar      wNullString;
-    private FormData     fdlNullString, fdNullString;
-
-    private Label        wlRecordTerminator;
-    private TextVar      wRecordTerminator;
-    private FormData     fdlRecordTerminator, fdRecordTerminator;
-
     private Label        wlExceptionsLogFile;
     private TextVar      wExceptionsLogFile;
     private FormData     fdlExceptionsLogFile, fdExceptionsLogFile;
@@ -376,72 +363,6 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         fdAbortOnError.right = new FormAttachment(100, 0);
         wAbortOnError.setLayoutData(fdAbortOnError);
         
-        // Delimiter line...
-        wlDelimiter=new Label(wMainComp, SWT.RIGHT);
-        wlDelimiter.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Label")); //$NON-NLS-1$
-        wlDelimiter.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
-        props.setLook(wlDelimiter);
-        fdlDelimiter=new FormData();
-        fdlDelimiter.left = new FormAttachment(0, 0);
-        fdlDelimiter.right= new FormAttachment(middle, -margin);
-        fdlDelimiter.top  = new FormAttachment(wAbortOnError, margin*2);
-        wlDelimiter.setLayoutData(fdlDelimiter);
-
-        wDelimiter=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wDelimiter.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.Delimiter.Tooltip")); //$NON-NLS-1$
-        props.setLook(wDelimiter);
-        wDelimiter.addModifyListener(lsMod);
-        wDelimiter.addFocusListener(lsFocusLost);
-        fdDelimiter=new FormData();
-        fdDelimiter.left = new FormAttachment(middle, 0);
-        fdDelimiter.top  = new FormAttachment(wAbortOnError, margin*2);
-        fdDelimiter.right= new FormAttachment(100, 0);
-        wDelimiter.setLayoutData(fdDelimiter);
-
-        // NullString line...
-        wlNullString=new Label(wMainComp, SWT.RIGHT);
-        wlNullString.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Label")); //$NON-NLS-1$
-        wlNullString.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
-        props.setLook(wlNullString);
-        fdlNullString=new FormData();
-        fdlNullString.left = new FormAttachment(0, 0);
-        fdlNullString.right= new FormAttachment(middle, -margin);
-        fdlNullString.top  = new FormAttachment(wDelimiter, margin*2);
-        wlNullString.setLayoutData(fdlNullString);
-
-        wNullString=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wNullString.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.NullString.Tooltip")); //$NON-NLS-1$
-        props.setLook(wNullString);
-        wNullString.addModifyListener(lsMod);
-        wNullString.addFocusListener(lsFocusLost);
-        fdNullString=new FormData();
-        fdNullString.left = new FormAttachment(middle, 0);
-        fdNullString.top  = new FormAttachment(wDelimiter, margin*2);
-        fdNullString.right= new FormAttachment(100, 0);
-        wNullString.setLayoutData(fdNullString);
-
-        // RecordTerminator line...
-        wlRecordTerminator=new Label(wMainComp, SWT.RIGHT);
-        wlRecordTerminator.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Label")); //$NON-NLS-1$
-        wlRecordTerminator.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
-        props.setLook(wlRecordTerminator);
-        fdlRecordTerminator=new FormData();
-        fdlRecordTerminator.left = new FormAttachment(0, 0);
-        fdlRecordTerminator.right= new FormAttachment(middle, -margin);
-        fdlRecordTerminator.top  = new FormAttachment(wNullString, margin*2);
-        wlRecordTerminator.setLayoutData(fdlRecordTerminator);
-
-        wRecordTerminator=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-        wRecordTerminator.setToolTipText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.RecordTerminator.Tooltip")); //$NON-NLS-1$
-        props.setLook(wRecordTerminator);
-        wRecordTerminator.addModifyListener(lsMod);
-        wRecordTerminator.addFocusListener(lsFocusLost);
-        fdRecordTerminator=new FormData();
-        fdRecordTerminator.left = new FormAttachment(middle, 0);
-        fdRecordTerminator.top  = new FormAttachment(wNullString, margin*2);
-        fdRecordTerminator.right= new FormAttachment(100, 0);
-        wRecordTerminator.setLayoutData(fdRecordTerminator);
-
         // ExceptionsLogFile line...
         wlExceptionsLogFile=new Label(wMainComp, SWT.RIGHT);
         wlExceptionsLogFile.setText(BaseMessages.getString(PKG, "VerticaBulkLoaderDialog.ExceptionsLogFile.Label")); //$NON-NLS-1$
@@ -450,7 +371,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         fdlExceptionsLogFile=new FormData();
         fdlExceptionsLogFile.left = new FormAttachment(0, 0);
         fdlExceptionsLogFile.right= new FormAttachment(middle, -margin);
-        fdlExceptionsLogFile.top  = new FormAttachment(wRecordTerminator, margin*2);
+        fdlExceptionsLogFile.top  = new FormAttachment(wAbortOnError, margin*2);
         wlExceptionsLogFile.setLayoutData(fdlExceptionsLogFile);
 
         wExceptionsLogFile=new TextVar(transMeta, wMainComp, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
@@ -460,7 +381,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
         wExceptionsLogFile.addFocusListener(lsFocusLost);
         fdExceptionsLogFile=new FormData();
         fdExceptionsLogFile.left = new FormAttachment(middle, 0);
-        fdExceptionsLogFile.top  = new FormAttachment(wRecordTerminator, margin*2);
+        fdExceptionsLogFile.top  = new FormAttachment(wAbortOnError, margin*2);
         fdExceptionsLogFile.right= new FormAttachment(100, 0);
         wExceptionsLogFile.setLayoutData(fdExceptionsLogFile);
 
@@ -866,9 +787,6 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		if (input.getTablename() != null) wTable.setText(input.getTablename());
 		if (input.getDatabaseMeta() != null) wConnection.setText(input.getDatabaseMeta().getName());
 		
-        if (input.getDelimiter() != null) wDelimiter.setText(input.getDelimiter());
-        if (input.getNullString() != null) wNullString.setText(input.getNullString());
-        if (input.getRecordTerminator() != null) wRecordTerminator.setText(input.getRecordTerminator());
         if (input.getExceptionsFileName() != null) wExceptionsLogFile.setText(input.getExceptionsFileName());
         if (input.getRejectedDataFileName() != null) wRejectedDataLogFile.setText(input.getRejectedDataFileName());
         if (input.getStreamName() != null) wStreamName.setText(input.getStreamName());
@@ -903,9 +821,6 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
 		info.setTablename( wTable.getText() );
 		info.setDatabaseMeta(  transMeta.findDatabase(wConnection.getText()) );
 
-        info.setDelimiter(wDelimiter.getText());
-        info.setNullString(wNullString.getText());
-        info.setRecordTerminator(wRecordTerminator.getText());
         info.setExceptionsFileName(wExceptionsLogFile.getText());
         info.setRejectedDataFileName(wRejectedDataLogFile.getText());
         info.setStreamName(wStreamName.getText());

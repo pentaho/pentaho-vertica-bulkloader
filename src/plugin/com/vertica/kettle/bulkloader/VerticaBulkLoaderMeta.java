@@ -55,9 +55,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 	private boolean direct = true;
 	private boolean abortOnError = true;
 
-	private String delimiter;
-	private String nullString;
-	private String recordTerminator;
 	private String exceptionsFileName;
 	private String rejectedDataFileName;
 	private String streamName;
@@ -182,36 +179,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		this.abortOnError = abortOnError;
 	}
 
-	public String getDelimiter()
-	{
-		return delimiter;
-	}
-
-	public void setDelimiter(String delimiter)
-	{
-		this.delimiter = delimiter;
-	}
-
-	public String getNullString()
-	{
-		return nullString;
-	}
-
-	public void setNullString(String nullString)
-	{
-		this.nullString = nullString;
-	}
-
-	public String getRecordTerminator()
-	{
-		return recordTerminator;
-	}
-
-	public void setRecordTerminator(String recordTerminator)
-	{
-		this.recordTerminator = recordTerminator;
-	}
-
 	public String getExceptionsFileName()
 	{
 		return exceptionsFileName;
@@ -272,9 +239,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 				fieldStream     [i] = XMLHandler.getTagValue(knode, "stream_name"); //$NON-NLS-1$
 			}
 
-			delimiter = XMLHandler.getTagValue(stepnode, "delimiter");
-			nullString = XMLHandler.getTagValue(stepnode, "null_string");
-			recordTerminator = XMLHandler.getTagValue(stepnode, "record_terminator");
 			exceptionsFileName = XMLHandler.getTagValue(stepnode, "exceptions_filename");
 			rejectedDataFileName = XMLHandler.getTagValue(stepnode, "rejected_data_filename");
 			abortOnError = "Y".equalsIgnoreCase(XMLHandler.getTagValue(stepnode, "abort_on_error"));
@@ -317,9 +281,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		}
 		retval.append("    </fields>").append(Const.CR); //$NON-NLS-1$
 
-		retval.append("    "+XMLHandler.addTagValue("delimiter",              delimiter));
-		retval.append("    "+XMLHandler.addTagValue("null_string",            nullString));
-		retval.append("    "+XMLHandler.addTagValue("record_terminator",      recordTerminator));
 		retval.append("    "+XMLHandler.addTagValue("exceptions_filename",    exceptionsFileName));
 		retval.append("    "+XMLHandler.addTagValue("rejected_data_filename", rejectedDataFileName));
 		retval.append("    "+XMLHandler.addTagValue("abort_on_error",         abortOnError));
@@ -352,9 +313,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 						idx, "stream_name"), ""); //$NON-NLS-1$ //$NON-NLS-2$
 			}
 
-			delimiter = rep.getStepAttributeString(id_step, "delimiter");
-			nullString = rep.getStepAttributeString(id_step, "null_string");
-			recordTerminator = rep.getStepAttributeString(id_step, "record_terminator");
 			exceptionsFileName = rep.getStepAttributeString(id_step, "exceptions_filename");
 			rejectedDataFileName = rep.getStepAttributeString(id_step, "rejected_data_filename");
 			abortOnError = rep.getStepAttributeBoolean(id_step, "abort_on_error");
@@ -386,9 +344,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 				rep.saveStepAttribute(id_transformation, id_step, idx, "stream_name", streamName); //$NON-NLS-1$
 			}
 
-			rep.saveStepAttribute(id_transformation, id_step, "delimiter", delimiter);
-			rep.saveStepAttribute(id_transformation, id_step, "null_string", nullString);
-			rep.saveStepAttribute(id_transformation, id_step, "record_terminator", recordTerminator);
 			rep.saveStepAttribute(id_transformation, id_step, "exceptions_filename", exceptionsFileName);
 			rep.saveStepAttribute(id_transformation, id_step, "rejected_data_filename", rejectedDataFileName);
 			rep.saveStepAttribute(id_transformation, id_step, "abort_on_error", abortOnError);
@@ -592,20 +547,6 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 		{
 			CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.ExpectedInputError"), stepMeta);
 			remarks.add(cr);
-		}
-
-		if (!Const.isEmpty(getDelimiter()))
-		{
-			if (getDelimiter().length() == 1)
-			{
-				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_OK, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterOk"), stepMeta);
-				remarks.add(cr);
-			}
-			else
-			{
-				CheckResult cr = new CheckResult(CheckResultInterface.TYPE_RESULT_ERROR, BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.CheckResult.DelimiterIsCharacterError"), stepMeta);
-				remarks.add(cr);
-			}
 		}
 	}
 
