@@ -66,6 +66,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		{
 			first=false;
 
+			
 			data.outputRowMeta = getInputRowMeta().clone();
 			meta.getFields(data.outputRowMeta, getStepname(), null, null, this);
 
@@ -304,50 +305,6 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 				data.db.setAutoCommit(false);
 
-				if (Const.isEmpty(meta.getDelimiter())) {
-					data.delimiter = "|";
-				} else {
-					String s = meta.getDelimiter();
-					s = s.replace("\\0", "\0");
-					s = s.replace("\\a", "\u0007");
-					s = s.replace("\\b", "\b");
-					s = s.replace("\\t", "\t");
-					s = s.replace("\\n", "\n");
-					s = s.replace("\\v", "\u0011");
-					s = s.replace("\\f", "\f");
-					s = s.replace("\\r", "\r");
-					data.delimiter = s.replace("'", "\\'");
-				}
-
-				if (Const.isEmpty(meta.getNullString())) {
-					data.nullString = "";
-				} else {
-					String s = meta.getNullString();
-					s = s.replace("\\0", "\0");
-					s = s.replace("\\a", "\u0007");
-					s = s.replace("\\b", "\b");
-					s = s.replace("\\t", "\t");
-					s = s.replace("\\n", "\n");
-					s = s.replace("\\v", "\u0011");
-					s = s.replace("\\f", "\f");
-					s = s.replace("\\r", "\r");
-					data.nullString = s.replace("'", "\\'");
-				}
-
-				if (Const.isEmpty(meta.getRecordTerminator())) {
-					data.recordTerminator = "\n";
-				} else {
-					String s = meta.getRecordTerminator();
-					s = s.replace("\\0", "\0");
-					s = s.replace("\\a", "\u0007");
-					s = s.replace("\\b", "\b");
-					s = s.replace("\\t", "\t");
-					s = s.replace("\\n", "\n");
-					s = s.replace("\\v", "\u0011");
-					s = s.replace("\\f", "\f");
-					s = s.replace("\\r", "\r");
-					data.recordTerminator = s.replace("'", "\\'");
-				}
 				return true;
 			}
 			catch(KettleException e)
