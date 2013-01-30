@@ -161,7 +161,7 @@ public class ColumnSpec {
 				this.mainBuffer.putLong((Long)value);
 				break;
 			case NUMERIC:
-				throw new UnsupportedOperationException("Encoding for TIMETZ data type is not implemented");
+				throw new UnsupportedOperationException("Encoding for NUMERIC data type is not implemented");
 				// break;
 			case TIME:
 				this.mainBuffer.putLong((Long)value);
@@ -186,9 +186,13 @@ public class ColumnSpec {
 				this.charEncoder.reset();
 				this.charBuffer.put((String)value);
 				this.charBuffer.flip();
-				prevPosition = this.mainBuffer.position();
+        int sizePosition = this.mainBuffer.position();
+        this.mainBuffer.putInt(0);
+				prevPosition = this.mainBuffer.position();        
 				this.charEncoder.encode(this.charBuffer,this.mainBuffer, true);
-				this.bytes = this.mainBuffer.position() - prevPosition;
+				int dataLength = this.mainBuffer.position() - prevPosition;
+        this.mainBuffer.putInt(sizePosition, dataLength);
+        this.bytes= this.mainBuffer.position() - sizePosition;
 				break;
 
 			default:

@@ -38,6 +38,12 @@ public class StreamEncoder {
     private final List<ColumnSpec> columns;
     private final BitSet rowNulls;
         
+    
+    public void close() throws IOException {
+      flushAndClose();
+    }
+    
+    
     public StreamEncoder(List<ColumnSpec> columns, PipedInputStream inputStream) throws IOException
 	{
 		this.columns = Collections.unmodifiableList(columns);
@@ -85,7 +91,7 @@ public class StreamEncoder {
 		}
 	}
     
-	public void writeHeader() {
+	public void writeHeader() throws IOException {
 		// File signature
 		buffer.put("NATIVE".getBytes(charset)).put(BYTE_LF).put(BYTE_FULL).put(BYTE_CR).put(BYTE_LF).put(BYTE_ZERO);
 
@@ -103,7 +109,7 @@ public class StreamEncoder {
 		
 		for (ColumnSpec column : columns) {
 			buffer.putInt(column.bytes);
-		}
+		}   
 	}
 	
 	public void writeRow(Object[] row) throws IOException {
@@ -140,13 +146,14 @@ public class StreamEncoder {
 		// Now fill in the row header
 		buffer.putInt(rowDataSizeFieldPosition, rowDataSize);
 		rowNulls.writeBytesTo(rowNullsFieldPosition, buffer);
-
+    
 	}
 	
 	private void flushAndClose() throws IOException {
 		flushBuffer();
-		channel.close();
-		pipedOutputStream.close();
+    channel.close();
+    pipedOutputStream.flush();
+    pipedOutputStream.close();
 	}
 	
 	private void checkAndFlushBuffer() throws IOException {

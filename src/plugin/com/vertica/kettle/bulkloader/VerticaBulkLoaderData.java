@@ -11,6 +11,7 @@
 
 package plugin.com.vertica.kettle.bulkloader;
 
+import com.vertica.jdbc.nativebinary.ColumnSpec;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
@@ -18,6 +19,9 @@ import org.pentaho.di.trans.step.BaseStepData;
 import org.pentaho.di.trans.step.StepDataInterface;
 
 import com.vertica.jdbc.nativebinary.StreamEncoder;
+import java.io.IOException;
+import java.io.PipedInputStream;
+import java.util.List;
 
 public class VerticaBulkLoaderData extends BaseStepData implements StepDataInterface
 {
@@ -31,7 +35,11 @@ public class VerticaBulkLoaderData extends BaseStepData implements StepDataInter
     protected RowMetaInterface outputRowMeta;
     protected RowMetaInterface insertRowMeta;
 
+    protected PipedInputStream pipedInputStream;
+    
     protected volatile Thread workerThread;
+    
+    protected List<ColumnSpec> colSpecs;
 
     protected VerticaBulkLoaderData()
 	{
@@ -39,5 +47,16 @@ public class VerticaBulkLoaderData extends BaseStepData implements StepDataInter
 		
 		db=null;
 	}
+    
+    
+   public void close() throws IOException {
+
+     if (encoder != null) {
+       encoder.close();
+     }
+                                 
+   }
+    
+   
 
 }

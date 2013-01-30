@@ -37,6 +37,12 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
+import com.vertica.jdbc.nativebinary.ColumnSpec;
+import com.vertica.jdbc.nativebinary.StreamEncoder;
+import java.io.InputStream;
+import java.io.PipedOutputStream;
+import java.util.ArrayList;
+
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface
 {
@@ -50,6 +56,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		super(stepMeta, stepDataInterface, copyNr, transMeta, trans);
 	}
 
+  @Override
 	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException
 	{
 		meta=(VerticaBulkLoaderMeta)smi;
@@ -58,18 +65,26 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		Object[] r=getRow();    // this also waits for a previous step to be finished.
 		if (r==null)  // no more input to be expected...
 		{
-			data.close();
+      
+      try {
+        data.close();
+      } catch (IOException ioe) {
+        throw new KettleStepException("Error releasing resources",ioe);
+        
+      }
 			return false;
 		}
 
 		if (first)
 		{
+      
 			first=false;
 
-			
+
 			data.outputRowMeta = getInputRowMeta().clone();
 			meta.getFields(data.outputRowMeta, getStepname(), null, null, this);
-
+          
+      data.colSpecs = new ArrayList<ColumnSpec>(data.outputRowMeta.size());        
 			if ( ! meta.specifyFields() )  {
 				// Just take the whole input row
 				data.insertRowMeta = getInputRowMeta().clone();
@@ -87,7 +102,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 					if (data.selectedRowFieldIndices[i]<0)
 					{
 						throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FieldRequired",meta.getFieldStream()[i])); //$NON-NLS-1$
-					}
+					}                    
 				}
 
 				for (int i=0;i<meta.getFieldDatabase().length;i++) 
@@ -104,9 +119,28 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 					}
 				}            	
 			}
+      
+      //Get column spec from field
+      for (int i=0;i<data.insertRowMeta.size();i++)
+			{      
+        ColumnSpec cs = getColumnSpecFromField(data.insertRowMeta.getValueMeta(i));
+        data.colSpecs.add(i, cs);
+      }
+      
+      try {
+        data.pipedInputStream = new PipedInputStream();
+       data.encoder = new StreamEncoder(data.colSpecs, data.pipedInputStream);
+       
 
-			initializeWorker();
-			data.writeHeader();
+     
+        initializeWorker();      
+        data.encoder.writeHeader();      
+       
+      } catch (IOException ioe)  {
+        throw new KettleStepException("Error creating stream encoder", ioe);
+      }
+
+			
 		}
 
 		try
@@ -135,19 +169,41 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		return true;
 	}
 
+  private ColumnSpec getColumnSpecFromField(ValueMetaInterface fieldDefinition) {
+    if (fieldDefinition.isNumeric()) {
+      if (fieldDefinition.isInteger()) {
+          return new ColumnSpec(ColumnSpec.ConstantWidthType.INTEGER_64);
+      } else if (fieldDefinition.isNumber()) {
+          return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);
+      } else
+          return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);        
+    } else if (fieldDefinition.isDate()) {
+        return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
+    } else if (fieldDefinition.isString()) {
+        return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
+    } else if (fieldDefinition.isBinary()) {
+        return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
+    } else if (fieldDefinition.isBoolean()) {
+        return new ColumnSpec(ColumnSpec.ConstantWidthType.BOOLEAN);
+    } else 
+      return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
+  }
+  
+  
 	private void initializeWorker()
 	{
 		final String dml = buildCopyStatementSqlString();
 
 		data.workerThread = Executors.defaultThreadFactory().newThread(new Runnable() {
-			public void run() {
+			@Override
+      public void run() {
 				try
 				{
-					PipedInputStream sink = new PipedInputStream();
-					data.connectInputStream(sink);
+  
+                    
 					VerticaCopyStream stream = new VerticaCopyStream((VerticaConnection)(data.db.getConnection()), dml);
 					stream.start();
-					stream.addStream(sink);
+					stream.addStream(data.pipedInputStream);
 					setLinesRejected(stream.getRejects().size());
 					stream.execute();
 					long rowsLoaded = stream.finish();
@@ -169,12 +225,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 						stopAll();
 						setOutputDone();  // signal end to receiver(s)
 					}
-				} catch (IOException e) {
-					logError("Error connecting InputStream during initialization.", e);
-					setErrors(1);
-					stopAll();
-					setOutputDone();  // signal end to receiver(s)
-				}
+				} 
 			}
 		});
 
@@ -233,7 +284,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		}
 
 		//XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
-		sb.append("NO COMMIT");
+//		sb.append("NO COMMIT");
 
 		return sb.toString();
 	}
@@ -242,6 +293,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 	{
 		assert(r!=null);
 
+
+        
+    
 		Object[] insertRowData = r; 
 		Object[] outputRowData = r;
 
@@ -255,18 +309,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 		try
 		{
-			for (int i = 0; i < data.selectedRowFieldIndices.length; i++)
-			{
-				if (i > 0) data.writer.write(data.delimiter);
-
-				if (insertRowData[i] == null) {
-					data.writer.write(data.nullString);
-				} else {
-					data.writer.write(data.insertRowMeta.getString(insertRowData, i));
-				}
-			}
-
-			data.writer.write(data.recordTerminator);
+      data.encoder.writeRow(insertRowData);
 		}
 		catch (IOException e)
 		{
@@ -278,6 +321,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		return outputRowData;
 	}
 
+  @Override
 	public boolean init(StepMetaInterface smi, StepDataInterface sdi)
 	{
 		meta=(VerticaBulkLoaderMeta)smi;
@@ -335,8 +379,6 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 					}
 					catch (InterruptedException e)
 					{
-						// TODO Auto-generated catch block
-						e.printStackTrace();
 					}
 				}
 			}
@@ -344,6 +386,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		super.stopRunning(stepMetaInterface, stepDataInterface);
 	}
 
+  @Override
 	public void dispose(StepMetaInterface smi, StepDataInterface sdi)
 	{
 		meta=(VerticaBulkLoaderMeta)smi;
@@ -351,18 +394,22 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 		setOutputDone();
 
+    
+    			try
+			{
+
 		if (getErrors()>0)
 		{
-			try
-			{
 				data.db.rollback();
+		} 
 			}
 			catch(KettleDatabaseException e)
 			{
 				logError("Unexpected error rolling back the database connection.", e);
 			}
-		}
 
+                
+          
 		if (data.workerThread != null)
 		{
 			try
@@ -371,8 +418,6 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 			}
 			catch (InterruptedException e)
 			{
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
 		}
 
