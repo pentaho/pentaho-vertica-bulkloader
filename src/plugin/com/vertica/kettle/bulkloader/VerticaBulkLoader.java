@@ -178,7 +178,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
       } else
           return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);        
     } else if (fieldDefinition.isDate()) {
-        return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
+        return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
     } else if (fieldDefinition.isString()) {
         return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
     } else if (fieldDefinition.isBinary()) {
@@ -284,6 +284,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		}
 
 		//XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
+    //NO COMMIT does not seem to work even when the transformation setting 'make the transformation database transactional' is on
 //		sb.append("NO COMMIT");
 
 		return sb.toString();

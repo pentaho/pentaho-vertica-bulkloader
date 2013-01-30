@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetEncoder;
+import java.util.Calendar;
+import java.util.Date;
 
 public class ColumnSpec {	
 	private static final byte BYTE_ZERO = (byte)0;
@@ -106,8 +108,9 @@ public class ColumnSpec {
 
 	public void encode(Object value) throws CharacterCodingException {
 		if (value == null) return;
-		int prevPosition,length;
+		int prevPosition,length, sizePosition;
 		ByteBuffer inputBinary;
+    Calendar cld;
 		
 		switch (this.type) {
 			case BINARY:
@@ -134,7 +137,18 @@ public class ColumnSpec {
 				}
 				break;
 			case DATE:
-				this.mainBuffer.putLong((Long)value);
+        
+        //Get Julian date for 01/01/2000
+        long julianStart = toJulian(2000, 1, 1);
+        cld = Calendar.getInstance();
+        cld.setTime((Date)value);
+        long julianEnd = toJulian(
+                cld.get(Calendar.YEAR), 
+                cld.get(Calendar.MONTH)+1,
+                cld.get(Calendar.DAY_OF_MONTH)
+                );
+        
+				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
 				break;
 			case FLOAT:
 				this.mainBuffer.putDouble((Double) value);
@@ -167,7 +181,13 @@ public class ColumnSpec {
 				this.mainBuffer.putLong((Long)value);
 				break;
 			case TIMESTAMP:
-				this.mainBuffer.putLong((Long)value);
+				cld = Calendar.getInstance();
+        cld.setTime((Date)value);
+        Calendar julianStartDate = Calendar.getInstance();
+        julianStartDate.set(2000, 0, 1, 0, 0, 0);
+        
+        long milliSeconds = cld.getTimeInMillis() - julianStartDate.getTimeInMillis();
+        this.mainBuffer.putLong(new Long(milliSeconds * 1000));
 				break;
 			case TIMESTAMPZ:
 				this.mainBuffer.putLong((Long)value);
@@ -177,16 +197,19 @@ public class ColumnSpec {
 				// break;
 			case VARBINARY:
 				inputBinary = (ByteBuffer)value;
+        sizePosition = this.mainBuffer.position();
+        this.mainBuffer.putInt(0);        
 				prevPosition = this.mainBuffer.position();
 				this.mainBuffer.put(inputBinary);
-				this.bytes = this.mainBuffer.position() - prevPosition;
+        this.mainBuffer.putInt(sizePosition, this.mainBuffer.position() - prevPosition);        
+				this.bytes = this.mainBuffer.position() - sizePosition;
 				break;
 			case VARCHAR:
 				this.charBuffer.clear();
 				this.charEncoder.reset();
 				this.charBuffer.put((String)value);
 				this.charBuffer.flip();
-        int sizePosition = this.mainBuffer.position();
+        sizePosition = this.mainBuffer.position();
         this.mainBuffer.putInt(0);
 				prevPosition = this.mainBuffer.position();        
 				this.charEncoder.encode(this.charBuffer,this.mainBuffer, true);
@@ -200,4 +223,43 @@ public class ColumnSpec {
 				// break;
 		}
 	}
+  
+  
+/**
+  * Returns the Julian day number that begins at noon of
+  * this day, Positive year signifies A.D., negative year B.C.
+  * Remember that the year after 1 B.C. was 1 A.D.
+  * NOTE THAT day and month are base 1 (January == 1)
+  * ref :
+  *  Numerical Recipes in C, 2nd ed., Cambridge University Press 1992
+  */
+  // Gregorian Calendar adopted Oct. 15, 1582 (2299161)
+  public static int JGREG= 15 + 31*(10+12*1582);
+  public static double HALFSECOND = 0.5;
+
+  private static long toJulian(int year, int month, int day) {
+   int julianYear = year;
+   if (year < 0) julianYear++;
+   int julianMonth = month;
+   if (month > 2) {
+     julianMonth++;
+   }
+   else {
+     julianYear--;
+     julianMonth += 13;
+   }
+
+   double julian = (java.lang.Math.floor(365.25 * julianYear)
+        + java.lang.Math.floor(30.6001*julianMonth) + day + 1720995.0);
+   if (day + 31 * (month + 12 * year) >= JGREG) {
+     // change over to Gregorian calendar
+     int ja = (int)(0.01 * julianYear);
+     julian += 2 - ja + (0.25 * ja);
+   }
+   return (long) java.lang.Math.floor(julian);
+ }
+  
+  
+  
+  
 }
