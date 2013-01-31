@@ -69,7 +69,15 @@ public class ColumnSpec {
 	private CharBuffer	charBuffer;
 	private CharsetEncoder	charEncoder;
 	private ByteBuffer	mainBuffer;
-	
+  private final Calendar cld = Calendar.getInstance();
+	private static final Calendar julianStartDate;
+  
+  static {
+    julianStartDate = Calendar.getInstance();
+    julianStartDate.set(2000, 0, 1, 0, 0, 0);
+
+  }
+  
 	public ColumnSpec(PrecisionScaleWidthType precisionScaleWidthType, int precision, int scale) {
 		this.type = precisionScaleWidthType.type;
 		this.bytes = Math.round((precision / 19 + 1) * 8);
@@ -110,7 +118,6 @@ public class ColumnSpec {
 		if (value == null) return;
 		int prevPosition,length, sizePosition;
 		ByteBuffer inputBinary;
-    Calendar cld;
 		
 		switch (this.type) {
 			case BINARY:
@@ -136,11 +143,9 @@ public class ColumnSpec {
 					this.mainBuffer.put(BYTE_SPACE);
 				}
 				break;
-			case DATE:
-        
+			case DATE:        
         //Get Julian date for 01/01/2000
         long julianStart = toJulian(2000, 1, 1);
-        cld = Calendar.getInstance();
         cld.setTime((Date)value);
         long julianEnd = toJulian(
                 cld.get(Calendar.YEAR), 
@@ -181,11 +186,7 @@ public class ColumnSpec {
 				this.mainBuffer.putLong((Long)value);
 				break;
 			case TIMESTAMP:
-				cld = Calendar.getInstance();
-        cld.setTime((Date)value);
-        Calendar julianStartDate = Calendar.getInstance();
-        julianStartDate.set(2000, 0, 1, 0, 0, 0);
-        
+        cld.setTime((Date)value);        
         long milliSeconds = cld.getTimeInMillis() - julianStartDate.getTimeInMillis();
         this.mainBuffer.putLong(new Long(milliSeconds * 1000));
 				break;
