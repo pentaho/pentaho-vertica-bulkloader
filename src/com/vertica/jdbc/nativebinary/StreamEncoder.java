@@ -180,6 +180,12 @@ public class StreamEncoder {
 			bytes = new byte[this.numBytes];
 		}
 
+		/**
+		 * Sets the bit in the BitSet to 1.
+		 * The first column (index 0) bit is the msb.
+		 * 
+		 * @param bitIndex bit index (first bit index is 0)
+		 */
 		private void setBit(int bitIndex) {
 			if (bitIndex < 0 || bitIndex >= numBits) {
 				throw new IllegalArgumentException("Invalid bit index");
@@ -188,7 +194,7 @@ public class StreamEncoder {
 			int byteIdx = (int) Math.floor((double) bitIndex / 8.0d);
 
 			int bitIdx = bitIndex - (byteIdx * 8);
-			bytes[byteIdx] |= (1 << bitIdx);
+			bytes[byteIdx] |= (1 << (7-bitIdx));
 			
 			dirty = true;
 		}
