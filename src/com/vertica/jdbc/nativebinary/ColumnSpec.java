@@ -17,6 +17,7 @@ public class ColumnSpec {
 		INTEGER_32(ColumnType.INTEGER, 4),
 		INTEGER_64(ColumnType.INTEGER, 8),
 		BOOLEAN(ColumnType.BOOLEAN, 1),
+		BIGNUMBER(ColumnType.BIGNUMBER, 8),
 		FLOAT(ColumnType.FLOAT, 8),
 		DATE(ColumnType.DATE, 8),
 		TIME(ColumnType.TIME, 8),
@@ -74,6 +75,7 @@ public class ColumnSpec {
   
   static {
     julianStartDate = Calendar.getInstance();
+    julianStartDate.clear();
     julianStartDate.set(2000, 0, 1, 0, 0, 0);
 
   }
@@ -144,19 +146,21 @@ public class ColumnSpec {
 				}
 				break;
 			case DATE:        
-        //Get Julian date for 01/01/2000
-        long julianStart = toJulian(2000, 1, 1);
-        cld.setTime((Date)value);
-        long julianEnd = toJulian(
-                cld.get(Calendar.YEAR), 
-                cld.get(Calendar.MONTH)+1,
-                cld.get(Calendar.DAY_OF_MONTH)
-                );
-        
-				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
+				//Get Julian date for 01/01/2000
+				long julianStart = toJulian(2000, 1, 1);
+				cld.setTime((Date)value);
+				long julianEnd = toJulian(
+						cld.get(Calendar.YEAR), 
+						cld.get(Calendar.MONTH)+1,
+						cld.get(Calendar.DAY_OF_MONTH)
+						);
+ 				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
 				break;
 			case FLOAT:
 				this.mainBuffer.putDouble((Double) value);
+				break;
+			case BIGNUMBER:
+				this.mainBuffer.putDouble(((java.math.BigDecimal)value).doubleValue());
 				break;
 			case INTEGER:
 				switch (this.bytes){

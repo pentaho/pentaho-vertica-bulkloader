@@ -175,6 +175,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
           return new ColumnSpec(ColumnSpec.ConstantWidthType.INTEGER_64);
       } else if (fieldDefinition.isNumber()) {
           return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);
+      } else if (fieldDefinition.isBigNumber()) {
+          return new ColumnSpec(ColumnSpec.ConstantWidthType.BIGNUMBER);
       } else
           return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);        
     } else if (fieldDefinition.isDate()) {

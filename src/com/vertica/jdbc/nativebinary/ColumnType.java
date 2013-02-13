@@ -4,6 +4,7 @@ public enum ColumnType {
 	INTEGER,
 	BOOLEAN,
 	FLOAT,
+	BIGNUMBER,
 	CHAR,
 	VARCHAR,
 	DATE,
