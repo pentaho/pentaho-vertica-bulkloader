@@ -395,6 +395,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		meta=(VerticaBulkLoaderMeta)smi;
 		data=(VerticaBulkLoaderData)sdi;
 
+		// allow data to be garbage collected immediately:
+		data.colSpecs = null;
+		data.encoder = null;
 		setOutputDone();
 
     
