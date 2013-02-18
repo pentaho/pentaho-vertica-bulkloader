@@ -18,12 +18,14 @@ import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Counter;
+import org.pentaho.di.core.DBCache;
 import org.pentaho.di.core.SQLStatement;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
@@ -746,4 +748,53 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 	{
 		return true;
 	}      
+
+	public RowMetaInterface getTableRowMetaInterface() throws KettleException {
+		
+		if (databaseMeta!=null)
+		{
+			// TODO
+			DBCache.getInstance().clear(databaseMeta.getName());
+			
+			Database db = new Database(loggingObject, databaseMeta);
+			try
+			{
+				db.connect();
+
+				if (!Const.isEmpty(tablename))
+				{
+					String schemaTable = databaseMeta.getQuotedSchemaTableCombination(schemaName, tablename);
+
+					// Check if this table exists...
+					if (db.checkTableExists(schemaTable))
+					{
+						return db.getTableFields(schemaTable);
+					}
+					else
+					{
+						throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.TableNotFound"));
+					}
+				}
+				else
+				{
+					throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.TableNotSpecified"));
+				}
+			}
+			catch(Exception e)
+			{
+				throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.ErrorGettingFields"), e);
+			}
+			finally
+			{
+				db.disconnect();
+			}
 		}
+		else
+		{
+			throw new KettleException(BaseMessages.getString(PKG, "VerticaBulkLoaderMeta.Exception.ConnectionNotDefined"));
+		}
+
+	}
+
+
+}
