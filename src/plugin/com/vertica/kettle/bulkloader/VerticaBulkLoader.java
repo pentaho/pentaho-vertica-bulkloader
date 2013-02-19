@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.concurrent.Executors;
 
 import org.pentaho.di.core.Const;
@@ -39,9 +40,6 @@ import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
 import com.vertica.jdbc.nativebinary.ColumnSpec;
 import com.vertica.jdbc.nativebinary.StreamEncoder;
-import java.io.InputStream;
-import java.io.PipedOutputStream;
-import java.util.ArrayList;
 
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface
@@ -56,151 +54,168 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		super(stepMeta, stepDataInterface, copyNr, transMeta, trans);
 	}
 
-  @Override
-	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException
-	{
-		meta=(VerticaBulkLoaderMeta)smi;
-		data=(VerticaBulkLoaderData)sdi;
+	@Override
+	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException {
+		meta = (VerticaBulkLoaderMeta) smi;
+		data = (VerticaBulkLoaderData) sdi;
 
-		Object[] r=getRow();    // this also waits for a previous step to be finished.
-		if (r==null)  // no more input to be expected...
+		Object[] r = getRow(); // this also waits for a previous step to be
+								// finished.
+		if (r == null) // no more input to be expected...
 		{
-      
-      try {
-        data.close();
-      } catch (IOException ioe) {
-        throw new KettleStepException("Error releasing resources",ioe);
-        
-      }
+
+			try {
+				data.close();
+			} catch (IOException ioe) {
+				throw new KettleStepException("Error releasing resources", ioe);
+			}
 			return false;
 		}
 
-		if (first)
-		{
-      
-			first=false;
+		if (first) {
 
+			first = false;
 
 			data.outputRowMeta = getInputRowMeta().clone();
 			meta.getFields(data.outputRowMeta, getStepname(), null, null, this);
-          
-      data.colSpecs = new ArrayList<ColumnSpec>(data.outputRowMeta.size());        
-			if ( ! meta.specifyFields() )  {
+
+			RowMetaInterface tableMeta = meta.getTableRowMetaInterface();
+
+			if (!meta.specifyFields()) {
+				
 				// Just take the whole input row
 				data.insertRowMeta = getInputRowMeta().clone();
 				data.selectedRowFieldIndices = new int[data.insertRowMeta.size()];
-			}
-			else  {
 
+				data.colSpecs = new ArrayList<ColumnSpec>(data.insertRowMeta.size());
+				
+				for (int insertFieldIdx = 0; insertFieldIdx < data.insertRowMeta.size(); insertFieldIdx++) {
+					data.selectedRowFieldIndices[insertFieldIdx] = insertFieldIdx;
+					ValueMetaInterface inputValueMeta = data.insertRowMeta.getValueMeta(insertFieldIdx);
+					ValueMetaInterface insertValueMeta = inputValueMeta.clone();
+					ValueMetaInterface targetValueMeta = tableMeta.getValueMeta(insertFieldIdx);
+					ColumnSpec cs = getColumnSpecFromField(inputValueMeta, insertValueMeta, targetValueMeta);
+					data.colSpecs.add(insertFieldIdx, cs);
+				}
+				
+			} else {
+
+				int numberOfInsertFields = meta.getFieldDatabase().length ;
 				data.insertRowMeta = new RowMeta();
+				data.colSpecs = new ArrayList<ColumnSpec>(numberOfInsertFields);
 
 				// Cache the position of the selected fields in the row array
-				data.selectedRowFieldIndices = new int[meta.getFieldDatabase().length];
-				for (int i=0;i<meta.getFieldDatabase().length;i++)
-				{
-					data.selectedRowFieldIndices[i]=getInputRowMeta().indexOfValue(meta.getFieldStream()[i]);
-					if (data.selectedRowFieldIndices[i]<0)
-					{
-						throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FieldRequired",meta.getFieldStream()[i])); //$NON-NLS-1$
-					}                    
+				data.selectedRowFieldIndices = new int[numberOfInsertFields];
+				for (int insertFieldIdx = 0; insertFieldIdx < numberOfInsertFields; insertFieldIdx++) {
+
+					String inputFieldName = meta.getFieldStream()[insertFieldIdx];
+					int inputFieldIdx = getInputRowMeta().indexOfValue(inputFieldName);
+					if (inputFieldIdx < 0) {
+						throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FieldRequired", inputFieldName)); //$NON-NLS-1$
+					}
+					data.selectedRowFieldIndices[insertFieldIdx] = inputFieldIdx;
+
+					String insertFieldName = meta.getFieldDatabase()[insertFieldIdx];
+					ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta(inputFieldIdx);
+					if (inputValueMeta == null) {
+						throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[insertFieldIdx])); //$NON-NLS-1$ 
+					}
+					ValueMetaInterface insertValueMeta = inputValueMeta.clone();
+					insertValueMeta.setName(insertFieldName);
+					data.insertRowMeta.addValueMeta(insertValueMeta);
+					
+					ValueMetaInterface targetValueMeta = tableMeta.searchValueMeta(insertFieldName);
+					ColumnSpec cs = getColumnSpecFromField(inputValueMeta, insertValueMeta, targetValueMeta);
+					data.colSpecs.add(insertFieldIdx, cs);
 				}
 
-				for (int i=0;i<meta.getFieldDatabase().length;i++) 
-				{
-					ValueMetaInterface insValue = getInputRowMeta().searchValueMeta( meta.getFieldStream()[i]); 
-					if ( insValue != null )
-					{
-						ValueMetaInterface insertValue = insValue.clone();
-						insertValue.setName(meta.getFieldDatabase()[i]);
-						data.insertRowMeta.addValueMeta( insertValue );
-					}
-					else  {
-						throw new KettleStepException(BaseMessages.getString(PKG, "VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[i])); //$NON-NLS-1$ 
-					}
-				}            	
 			}
-      
-      //Get column spec from field
-      for (int i=0;i<data.insertRowMeta.size();i++)
-			{      
-        ColumnSpec cs = getColumnSpecFromField(data.insertRowMeta.getValueMeta(i));
-        data.colSpecs.add(i, cs);
-      }
-      
-      try {
-        data.pipedInputStream = new PipedInputStream();
-       data.encoder = new StreamEncoder(data.colSpecs, data.pipedInputStream);
-       
 
-     
-        initializeWorker();      
-        data.encoder.writeHeader();      
-       
-      } catch (IOException ioe)  {
-        throw new KettleStepException("Error creating stream encoder", ioe);
-      }
+			try {
+				data.pipedInputStream = new PipedInputStream();
+				data.encoder = new StreamEncoder(data.colSpecs, data.pipedInputStream);
 
-			
+				initializeWorker();
+				data.encoder.writeHeader();
+
+			} catch (IOException ioe) {
+				throw new KettleStepException("Error creating stream encoder", ioe);
+			}
+
 		}
 
-		try
-		{
-			Object[] outputRowData = writeToOutputStream(getInputRowMeta(), r);
-			if (outputRowData!=null)
-			{
-				putRow(data.outputRowMeta, outputRowData); // in case we want it go further...
+		try {
+			Object[] outputRowData = writeToOutputStream(r);
+			if (outputRowData != null) {
+				putRow(data.outputRowMeta, outputRowData);  // in case we want it
+															// go further...
 				incrementLinesOutput();
 			}
 
-			if (checkFeedback(getLinesRead())) 
-			{
-				if(log.isBasic()) logBasic("linenr "+getLinesRead()); //$NON-NLS-1$
+			if (checkFeedback(getLinesRead())) {
+				if (log.isBasic())
+					logBasic("linenr " + getLinesRead()); //$NON-NLS-1$
 			}
-		}
-		catch(KettleException e)
-		{
+		} catch (KettleException e) {
 			logError("Because of an error, this step can't continue: ", e);
 			setErrors(1);
 			stopAll();
-			setOutputDone();  // signal end to receiver(s)
+			setOutputDone(); // signal end to receiver(s)
 			return false;
-		}		
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 
 		return true;
 	}
 
-  private ColumnSpec getColumnSpecFromField(ValueMetaInterface fieldDefinition) {
-    if (fieldDefinition.isNumeric()) {
-      if (fieldDefinition.isInteger()) {
-          return new ColumnSpec(ColumnSpec.ConstantWidthType.INTEGER_64);
-      } else if (fieldDefinition.isNumber()) {
-          return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);
-      } else
-          return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);        
-    } else if (fieldDefinition.isDate()) {
-        return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
-    } else if (fieldDefinition.isString()) {
-        return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
-    } else if (fieldDefinition.isBinary()) {
-        return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
-    } else if (fieldDefinition.isBoolean()) {
-        return new ColumnSpec(ColumnSpec.ConstantWidthType.BOOLEAN);
-    } else 
-      return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
-  }
-  
-  
+	private ColumnSpec getColumnSpecFromField(ValueMetaInterface inputValueMeta, ValueMetaInterface insertValueMeta, ValueMetaInterface targetValueMeta) {
+		logBasic("Mapping input field " + inputValueMeta.getName() + " (" + inputValueMeta.getTypeDesc() + ")"
+				+ " to target column " + insertValueMeta.getName() + " (" + targetValueMeta.getOriginalColumnTypeName() + ") " );
+
+		String targetColumnTypeName = targetValueMeta.getOriginalColumnTypeName();
+
+		if (targetColumnTypeName.equals("INTEGER") || targetColumnTypeName.equals("BIGINT")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.INTEGER_64);
+		} else if (targetColumnTypeName.equals("BOOLEAN")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.BOOLEAN);
+		} else if (targetColumnTypeName.equals("FLOAT") || targetColumnTypeName.equals("DOUBLE PRECISION")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.FLOAT);
+		} else if (targetColumnTypeName.equals("CHAR")) {
+			return new ColumnSpec(ColumnSpec.UserDefinedWidthType.CHAR, targetValueMeta.getLength());
+		} else if (targetColumnTypeName.equals("VARCHAR")) {
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
+		} else if (targetColumnTypeName.equals("DATE")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
+		} else if (targetColumnTypeName.equals("TIME")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIME);
+		} else if (targetColumnTypeName.equals("TIMETZ")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMETZ);
+		} else if (targetColumnTypeName.equals("TIMESTAMP")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
+		} else if (targetColumnTypeName.equals("TIMESTAMPTZ")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMPTZ);
+		} else if (targetColumnTypeName.equals("INTERVAL") || targetColumnTypeName.equals("INTERVAL DAY TO SECOND")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
+		} else if (targetColumnTypeName.equals("BINARY")) {
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
+		} else if (targetColumnTypeName.equals("VARBINARY")) {
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
+		} else if (targetColumnTypeName.equals("NUMERIC")) {
+			return new ColumnSpec(ColumnSpec.ConstantWidthType.NUMERIC);
+		}
+		throw new IllegalArgumentException("Column type " + targetColumnTypeName + " not supported."); //$NON-NLS-1$ 
+	}
+    
 	private void initializeWorker()
 	{
 		final String dml = buildCopyStatementSqlString();
 
 		data.workerThread = Executors.defaultThreadFactory().newThread(new Runnable() {
 			@Override
-      public void run() {
+			public void run() {
 				try
 				{
-  
-                    
 					VerticaCopyStream stream = new VerticaCopyStream((VerticaConnection)(data.db.getConnection()), dml);
 					stream.start();
 					stream.addStream(data.pipedInputStream);
@@ -283,19 +298,16 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 			sb.append("STREAM NAME E'").append(environmentSubstitute(meta.getStreamName()).replace("'", "\\'")).append("' ");
 		}
 
-		//XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
-    //NO COMMIT does not seem to work even when the transformation setting 'make the transformation database transactional' is on
-//		sb.append("NO COMMIT");
-
+		// XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
+		// NO COMMIT does not seem to work even when the transformation setting 'make the transformation database transactional' is on
+		// sb.append("NO COMMIT");
+		
 		return sb.toString();
 	}
 
-	private Object[] writeToOutputStream(RowMetaInterface rowMeta, Object[] r) throws KettleException
+	private Object[] writeToOutputStream(Object[] r) throws KettleException, IOException
 	{
 		assert(r!=null);
-
-
-        
     
 		Object[] insertRowData = r; 
 		Object[] outputRowData = r;
@@ -310,7 +322,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 		try
 		{
-      data.encoder.writeRow(insertRowData);
+			data.encoder.writeRow(data.insertRowMeta, insertRowData);
 		}
 		catch (IOException e)
 		{
@@ -384,6 +396,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 				}
 			}
 		}
+		
 		super.stopRunning(stepMetaInterface, stepDataInterface);
 	}
 
@@ -393,22 +406,23 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		meta=(VerticaBulkLoaderMeta)smi;
 		data=(VerticaBulkLoaderData)sdi;
 
+		// allow data to be garbage collected immediately:
+		data.colSpecs = null;
+		data.encoder = null;
+		
 		setOutputDone();
 
-    
-    			try
-			{
-
-		if (getErrors()>0)
+		try
 		{
-				data.db.rollback();
-		} 
-			}
-			catch(KettleDatabaseException e)
+			if (getErrors()>0)
 			{
-				logError("Unexpected error rolling back the database connection.", e);
-			}
-
+				data.db.rollback();
+			} 
+		}
+		catch(KettleDatabaseException e)
+		{
+			logError("Unexpected error rolling back the database connection.", e);
+		}
                 
           
 		if (data.workerThread != null)

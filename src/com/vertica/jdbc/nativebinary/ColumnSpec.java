@@ -1,28 +1,37 @@
 package com.vertica.jdbc.nativebinary;
 
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.TimeZone;
+
+import org.pentaho.di.core.exception.KettleValueException;
+import org.pentaho.di.core.row.RowMetaInterface;
+import org.pentaho.di.core.row.ValueMetaInterface;
 
 public class ColumnSpec {	
 	private static final byte BYTE_ZERO = (byte)0;
 	private static final byte BYTE_ONE = (byte)1;
 	private static final byte BYTE_SPACE = (byte)0x20;
+
 	public enum ConstantWidthType {
 		INTEGER_8(ColumnType.INTEGER, 1),
 		INTEGER_16(ColumnType.INTEGER, 2),
 		INTEGER_32(ColumnType.INTEGER, 4),
 		INTEGER_64(ColumnType.INTEGER, 8),
 		BOOLEAN(ColumnType.BOOLEAN, 1),
+		NUMERIC(ColumnType.NUMERIC, 8),
 		FLOAT(ColumnType.FLOAT, 8),
 		DATE(ColumnType.DATE, 8),
 		TIME(ColumnType.TIME, 8),
 		TIMETZ(ColumnType.TIMETZ, 8),
 		TIMESTAMP(ColumnType.TIMESTAMP, 8),
-		TIMESTAMPZ(ColumnType.TIMESTAMPZ, 8),
+		TIMESTAMPTZ(ColumnType.TIMESTAMPTZ, 8),
 		INTERVAL(ColumnType.INTERVAL, 8);
 		
 		private final ColumnType type;
@@ -69,12 +78,13 @@ public class ColumnSpec {
 	private CharBuffer	charBuffer;
 	private CharsetEncoder	charEncoder;
 	private ByteBuffer	mainBuffer;
-  private final Calendar cld = Calendar.getInstance();
-	private static final Calendar julianStartDate;
+	private final Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+	private static final Calendar julianStartDateCalendar;
   
   static {
-    julianStartDate = Calendar.getInstance();
-    julianStartDate.set(2000, 0, 1, 0, 0, 0);
+    julianStartDateCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+    julianStartDateCalendar.clear();
+    julianStartDateCalendar.set(2000, 0, 1, 0, 0, 0);
 
   }
   
@@ -114,13 +124,15 @@ public class ColumnSpec {
 		this.mainBuffer = buffer;
 	}
 
-	public void encode(Object value) throws CharacterCodingException {
+	public void encode(ValueMetaInterface valueMeta, Object value) throws CharacterCodingException, UnsupportedEncodingException, KettleValueException {
 		if (value == null) return;
-		int prevPosition,length, sizePosition;
+		int prevPosition, length, sizePosition;
 		ByteBuffer inputBinary;
+		long milliSeconds;
 		
 		switch (this.type) {
 			case BINARY:
+				//TODO: Validate
 				inputBinary = (ByteBuffer)value;
 				length = inputBinary.limit();
 				this.mainBuffer.put(inputBinary);
@@ -129,12 +141,12 @@ public class ColumnSpec {
 				}
 				break;
 			case BOOLEAN:
-				this.mainBuffer.put(((Boolean)value).booleanValue() ? BYTE_ONE : BYTE_ZERO);
+				this.mainBuffer.put((valueMeta.getBoolean(value)).booleanValue() ? BYTE_ONE : BYTE_ZERO);
 				break;
 			case CHAR:
 				this.charBuffer.clear();
 				this.charEncoder.reset();
-				this.charBuffer.put((String)value);
+				this.charBuffer.put(valueMeta.getString(value));
 				this.charBuffer.flip();
 				prevPosition = this.mainBuffer.position();
 				this.charEncoder.encode(this.charBuffer,this.mainBuffer, true);
@@ -144,79 +156,93 @@ public class ColumnSpec {
 				}
 				break;
 			case DATE:        
-        //Get Julian date for 01/01/2000
-        long julianStart = toJulian(2000, 1, 1);
-        cld.setTime((Date)value);
-        long julianEnd = toJulian(
-                cld.get(Calendar.YEAR), 
-                cld.get(Calendar.MONTH)+1,
-                cld.get(Calendar.DAY_OF_MONTH)
-                );
-        
-				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
+				//Get Julian date for 01/01/2000
+				long julianStart = toJulian(2000, 1, 1);
+				calendar.setTime(valueMeta.getDate(value));
+				long julianEnd = toJulian(
+						calendar.get(Calendar.YEAR), 
+						calendar.get(Calendar.MONTH)+1,
+						calendar.get(Calendar.DAY_OF_MONTH)
+						);
+ 				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
 				break;
 			case FLOAT:
-				this.mainBuffer.putDouble((Double) value);
+				this.mainBuffer.putDouble(valueMeta.getNumber(value));
 				break;
 			case INTEGER:
 				switch (this.bytes){
 					case 1:
-						this.mainBuffer.put(((Byte)value).byteValue());
+						this.mainBuffer.put(valueMeta.getInteger(value).byteValue());
 						break;
 					case 2:
-						this.mainBuffer.putShort((Short)value);
+						this.mainBuffer.putShort(valueMeta.getInteger(value).shortValue());
 						break;
 					case 4:
-						this.mainBuffer.putInt((Integer)value);
+						this.mainBuffer.putInt(valueMeta.getInteger(value).intValue());
 						break;
 					case 8:
-						this.mainBuffer.putLong((Long)value);
+						this.mainBuffer.putLong(valueMeta.getInteger(value));
 						break;
 					default:
 						throw new IllegalArgumentException("Invalid byte size for Integer type");
 				}
 				break;
 			case INTERVAL:
-				this.mainBuffer.putLong((Long)value);
+				this.mainBuffer.putLong(valueMeta.getInteger(value));
 				break;
 			case NUMERIC:
 				throw new UnsupportedOperationException("Encoding for NUMERIC data type is not implemented");
 				// break;
 			case TIME:
-				this.mainBuffer.putLong((Long)value);
-				break;
-			case TIMESTAMP:
-        cld.setTime((Date)value);        
-        long milliSeconds = cld.getTimeInMillis() - julianStartDate.getTimeInMillis();
-        this.mainBuffer.putLong(new Long(milliSeconds * 1000));
-				break;
-			case TIMESTAMPZ:
-				this.mainBuffer.putLong((Long)value);
+				// 64-bit integer in little-endian format containing the number of microseconds since midnight in the UTC time zone. 
+				calendar.setTime(valueMeta.getDate(value)); 
+				milliSeconds = calendar.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
+					+ calendar.get(Calendar.MINUTE) * 60 * 1000
+					+ calendar.get(Calendar.SECOND) * 1000
+					+ calendar.get(Calendar.MILLISECOND);
+				this.mainBuffer.putLong(milliSeconds*1000);
 				break;
 			case TIMETZ:
-				throw new UnsupportedOperationException("Encoding for TIMETZ data type is not implemented");
-				// break;
+				// 64-bit value where Upper 40 bits contain the number of microseconds since midnight and Lower 24 bits contain time zone as the UTC offset in microseconds calculated as follows: Time zone is logically from -24hrs to +24hrs from UTC. Instead it is represented here as a number between 0hrs to 48hrs. Therefore, 24hrs should be added to the actual time zone to calculate it.
+				calendar.setTime(valueMeta.getDate(value));
+				milliSeconds = calendar.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
+					+ calendar.get(Calendar.MINUTE) * 60 * 1000
+					+ calendar.get(Calendar.SECOND) * 1000
+					+ calendar.get(Calendar.MILLISECOND);
+				final long timeZoneOffsetMicroseconds = 24 * 3600 ;
+				this.mainBuffer.putLong(((milliSeconds * 1000) << 8*3) + timeZoneOffsetMicroseconds);
+				break;
+			case TIMESTAMP:
+				calendar.setTime(valueMeta.getDate(value));
+				milliSeconds = calendar.getTimeInMillis() - julianStartDateCalendar.getTimeInMillis();
+				this.mainBuffer.putLong(new Long(milliSeconds * 1000));
+				break;
+			case TIMESTAMPTZ:
+				calendar.setTime(valueMeta.getDate(value));
+				milliSeconds = calendar.getTimeInMillis() - julianStartDateCalendar.getTimeInMillis();
+				this.mainBuffer.putLong(new Long(milliSeconds * 1000));
+				break;
 			case VARBINARY:
 				inputBinary = (ByteBuffer)value;
-        sizePosition = this.mainBuffer.position();
-        this.mainBuffer.putInt(0);        
+				sizePosition = this.mainBuffer.position();
+				this.mainBuffer.putInt(0);        
 				prevPosition = this.mainBuffer.position();
 				this.mainBuffer.put(inputBinary);
-        this.mainBuffer.putInt(sizePosition, this.mainBuffer.position() - prevPosition);        
+				this.mainBuffer.putInt(sizePosition, this.mainBuffer.position() - prevPosition);        
 				this.bytes = this.mainBuffer.position() - sizePosition;
 				break;
 			case VARCHAR:
 				this.charBuffer.clear();
 				this.charEncoder.reset();
-				this.charBuffer.put((String)value);
+				this.charBuffer.put(valueMeta.getString(value));
 				this.charBuffer.flip();
-        sizePosition = this.mainBuffer.position();
-        this.mainBuffer.putInt(0);
-				prevPosition = this.mainBuffer.position();        
-				this.charEncoder.encode(this.charBuffer,this.mainBuffer, true);
+				sizePosition = this.mainBuffer.position();
+				this.mainBuffer.putInt(0);
+				prevPosition = this.mainBuffer.position();
+				this.charEncoder.encode(this.charBuffer, this.mainBuffer, true);
 				int dataLength = this.mainBuffer.position() - prevPosition;
-        this.mainBuffer.putInt(sizePosition, dataLength);
-        this.bytes= this.mainBuffer.position() - sizePosition;
+				this.mainBuffer.putInt(sizePosition, dataLength);
+				this.bytes= this.mainBuffer.position() - sizePosition;
 				break;
 
 			default:
