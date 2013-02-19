@@ -13,6 +13,10 @@ import java.nio.charset.CharsetEncoder;
 import java.util.Collections;
 import java.util.List;
 
+import org.pentaho.di.core.exception.KettleValueException;
+import org.pentaho.di.core.row.RowMetaInterface;
+import org.pentaho.di.core.row.ValueMetaInterface;
+
 public class StreamEncoder {
 	private static final byte BYTE_ZERO = (byte)0;
 	private static final byte BYTE_FULL = (byte)0xFF;
@@ -110,9 +114,10 @@ public class StreamEncoder {
 		for (ColumnSpec column : columns) {
 			buffer.putInt(column.bytes);
 		}   
+		
 	}
 	
-	public void writeRow(Object[] row) throws IOException {
+	public void writeRow(RowMetaInterface rowMeta, Object[] row) throws IOException, KettleValueException {
 		if (row == null) {
 			flushAndClose();
 			return;
@@ -134,11 +139,12 @@ public class StreamEncoder {
 		for (int i = 0; i < columnCount; i++) {
 			ColumnSpec colSpec = columns.get(i);
 			Object value = row[i];
+			ValueMetaInterface valueMeta = rowMeta.getValueMeta(i);
 			
 			if (value == null) {
 				rowNulls.setBit(i);
 			} else {
-				colSpec.encode(value);
+				colSpec.encode(valueMeta, value);
 				rowDataSize += colSpec.bytes;
 			}
 		}
@@ -146,14 +152,14 @@ public class StreamEncoder {
 		// Now fill in the row header
 		buffer.putInt(rowDataSizeFieldPosition, rowDataSize);
 		rowNulls.writeBytesTo(rowNullsFieldPosition, buffer);
-    
 	}
 	
+
 	private void flushAndClose() throws IOException {
 		flushBuffer();
-    channel.close();
-    pipedOutputStream.flush();
-    pipedOutputStream.close();
+		channel.close();
+		pipedOutputStream.flush();
+		pipedOutputStream.close();
 	}
 	
 	private void checkAndFlushBuffer() throws IOException {
@@ -180,6 +186,12 @@ public class StreamEncoder {
 			bytes = new byte[this.numBytes];
 		}
 
+		/**
+		 * Sets the bit in the BitSet to 1.
+		 * The first column (index 0) bit is the msb.
+		 * 
+		 * @param bitIndex bit index (first bit index is 0)
+		 */
 		private void setBit(int bitIndex) {
 			if (bitIndex < 0 || bitIndex >= numBits) {
 				throw new IllegalArgumentException("Invalid bit index");
@@ -188,7 +200,7 @@ public class StreamEncoder {
 			int byteIdx = (int) Math.floor((double) bitIndex / 8.0d);
 
 			int bitIdx = bitIndex - (byteIdx * 8);
-			bytes[byteIdx] |= (1 << bitIdx);
+			bytes[byteIdx] |= (1 << (7-bitIdx));
 			
 			dirty = true;
 		}
