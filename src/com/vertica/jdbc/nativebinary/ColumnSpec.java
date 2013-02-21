@@ -4,14 +4,11 @@ import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.TimeZone;
 
 import org.pentaho.di.core.exception.KettleValueException;
-import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 
 public class ColumnSpec {	
@@ -25,7 +22,6 @@ public class ColumnSpec {
 		INTEGER_32(ColumnType.INTEGER, 4),
 		INTEGER_64(ColumnType.INTEGER, 8),
 		BOOLEAN(ColumnType.BOOLEAN, 1),
-		NUMERIC(ColumnType.NUMERIC, 8),
 		FLOAT(ColumnType.FLOAT, 8),
 		DATE(ColumnType.DATE, 8),
 		TIME(ColumnType.TIME, 8),
@@ -33,9 +29,10 @@ public class ColumnSpec {
 		TIMESTAMP(ColumnType.TIMESTAMP, 8),
 		TIMESTAMPTZ(ColumnType.TIMESTAMPTZ, 8),
 		INTERVAL(ColumnType.INTERVAL, 8);
-		
+
 		private final ColumnType type;
 		private final int bytes;
+
 		private ConstantWidthType(ColumnType type, int bytes) {
 			this.type = type;
 			this.bytes = bytes;
@@ -45,18 +42,18 @@ public class ColumnSpec {
 	public enum VariableWidthType {
 		VARCHAR(ColumnType.VARCHAR),
 		VARBINARY(ColumnType.VARBINARY);
-		
+
 		private final ColumnType type;
 		private final int bytes = -1;
 		private VariableWidthType(ColumnType type) {
 			this.type = type;
 		}
 	}
-	
+
 	public enum UserDefinedWidthType {
 		CHAR(ColumnType.CHAR),
 		BINARY(ColumnType.BINARY);
-		
+
 		private final ColumnType type;
 		private UserDefinedWidthType(ColumnType type) {
 			this.type = type;
@@ -65,13 +62,13 @@ public class ColumnSpec {
 
 	public enum PrecisionScaleWidthType {
 		NUMERIC(ColumnType.NUMERIC);
-		
+
 		private final ColumnType type;
 		private PrecisionScaleWidthType(ColumnType type) {
 			this.type = type;
 		}
 	}
-	
+
 	public final ColumnType type;
 	public int bytes;
 	public final int scale;
@@ -80,17 +77,17 @@ public class ColumnSpec {
 	private ByteBuffer	mainBuffer;
 	private final Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 	private static final Calendar julianStartDateCalendar;
-  
-  static {
-    julianStartDateCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-    julianStartDateCalendar.clear();
-    julianStartDateCalendar.set(2000, 0, 1, 0, 0, 0);
 
-  }
-  
+	static {
+		julianStartDateCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		julianStartDateCalendar.clear();
+		julianStartDateCalendar.set(2000, 0, 1, 0, 0, 0);
+
+	}
+
 	public ColumnSpec(PrecisionScaleWidthType precisionScaleWidthType, int precision, int scale) {
 		this.type = precisionScaleWidthType.type;
-		this.bytes = Math.round((precision / 19 + 1) * 8);
+		this.bytes = -1 ; // NUMERIC is encoded as VARCHAR (length = -1)
 		this.scale = scale;
 	}
 
@@ -99,13 +96,13 @@ public class ColumnSpec {
 		this.bytes = bytes;
 		this.scale = 0;
 	}
-	
+
 	public ColumnSpec(ConstantWidthType constantWidthType) {
 		this.type = constantWidthType.type;
 		this.bytes = constantWidthType.bytes;
 		this.scale = 0;
 	}
-	
+
 	public ColumnSpec(VariableWidthType variableWidthType) {
 		this.type = variableWidthType.type;
 		this.bytes = variableWidthType.bytes;
@@ -127,14 +124,13 @@ public class ColumnSpec {
 	public void encode(ValueMetaInterface valueMeta, Object value) throws CharacterCodingException, UnsupportedEncodingException, KettleValueException {
 		if (value == null) return;
 		int prevPosition, length, sizePosition;
-		ByteBuffer inputBinary;
+		byte[] inputBinary;
 		long milliSeconds;
 		
 		switch (this.type) {
 			case BINARY:
-				//TODO: Validate
-				inputBinary = (ByteBuffer)value;
-				length = inputBinary.limit();
+				inputBinary = valueMeta.getBinaryString(value);
+				length = inputBinary.length;
 				this.mainBuffer.put(inputBinary);
 				for (int i = 0; i < (this.bytes - length); i++) {
 					this.mainBuffer.put(BYTE_ZERO);
@@ -190,9 +186,6 @@ public class ColumnSpec {
 			case INTERVAL:
 				this.mainBuffer.putLong(valueMeta.getInteger(value));
 				break;
-			case NUMERIC:
-				throw new UnsupportedOperationException("Encoding for NUMERIC data type is not implemented");
-				// break;
 			case TIME:
 				// 64-bit integer in little-endian format containing the number of microseconds since midnight in the UTC time zone. 
 				calendar.setTime(valueMeta.getDate(value)); 
@@ -223,14 +216,16 @@ public class ColumnSpec {
 				this.mainBuffer.putLong(new Long(milliSeconds * 1000));
 				break;
 			case VARBINARY:
-				inputBinary = (ByteBuffer)value;
 				sizePosition = this.mainBuffer.position();
 				this.mainBuffer.putInt(0);        
 				prevPosition = this.mainBuffer.position();
-				this.mainBuffer.put(inputBinary);
+				this.mainBuffer.put(valueMeta.getBinaryString(value));
 				this.mainBuffer.putInt(sizePosition, this.mainBuffer.position() - prevPosition);        
 				this.bytes = this.mainBuffer.position() - sizePosition;
 				break;
+			case NUMERIC:
+				// Numeric is encoded as VARCHAR. COPY statement uses is as a FILLER column for Vertica itself
+				// to convert into internal NUMERIC data format.
 			case VARCHAR:
 				this.charBuffer.clear();
 				this.charEncoder.reset();

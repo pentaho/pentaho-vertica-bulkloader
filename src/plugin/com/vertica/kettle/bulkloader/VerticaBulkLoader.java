@@ -39,6 +39,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
 import com.vertica.jdbc.nativebinary.ColumnSpec;
+import com.vertica.jdbc.nativebinary.ColumnType;
 import com.vertica.jdbc.nativebinary.StreamEncoder;
 
 
@@ -52,6 +53,13 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 	public VerticaBulkLoader(StepMeta stepMeta, StepDataInterface stepDataInterface, int copyNr, TransMeta transMeta, Trans trans)
 	{
 		super(stepMeta, stepDataInterface, copyNr, transMeta, trans);
+	}
+	
+	private boolean specifyFields() {
+//		We need to always specify fields mapping because we need to handle the 
+//		case for Numeric type which need a filler column in the mapping.
+//		return meta.specifyFields();
+		return true;
 	}
 
 	@Override
@@ -81,7 +89,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 			RowMetaInterface tableMeta = meta.getTableRowMetaInterface();
 
-			if (!meta.specifyFields()) {
+			if (!specifyFields()) {
 				
 				// Just take the whole input row
 				data.insertRowMeta = getInputRowMeta().clone();
@@ -169,6 +177,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		return true;
 	}
 
+
 	private ColumnSpec getColumnSpecFromField(ValueMetaInterface inputValueMeta, ValueMetaInterface insertValueMeta, ValueMetaInterface targetValueMeta) {
 		logBasic("Mapping input field " + inputValueMeta.getName() + " (" + inputValueMeta.getTypeDesc() + ")"
 				+ " to target column " + insertValueMeta.getName() + " (" + targetValueMeta.getOriginalColumnTypeName() + ") " );
@@ -186,23 +195,41 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		} else if (targetColumnTypeName.equals("VARCHAR")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
 		} else if (targetColumnTypeName.equals("DATE")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
 		} else if (targetColumnTypeName.equals("TIME")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIME);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIME);
 		} else if (targetColumnTypeName.equals("TIMETZ")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMETZ);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMETZ);
 		} else if (targetColumnTypeName.equals("TIMESTAMP")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
 		} else if (targetColumnTypeName.equals("TIMESTAMPTZ")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMPTZ);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMPTZ);
 		} else if (targetColumnTypeName.equals("INTERVAL") || targetColumnTypeName.equals("INTERVAL DAY TO SECOND")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
 		} else if (targetColumnTypeName.equals("BINARY")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
 		} else if (targetColumnTypeName.equals("VARBINARY")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
 		} else if (targetColumnTypeName.equals("NUMERIC")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.NUMERIC);
+			return new ColumnSpec(ColumnSpec.PrecisionScaleWidthType.NUMERIC, targetValueMeta.getLength(),targetValueMeta.getPrecision());
 		}
 		throw new IllegalArgumentException("Column type " + targetColumnTypeName + " not supported."); //$NON-NLS-1$ 
 	}
@@ -261,14 +288,23 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 						)
 		);
 
-		if (meta.specifyFields())  {
-			final RowMetaInterface fields = data.insertRowMeta;
+		if (specifyFields())  {
 			sb.append(" (");
+			final RowMetaInterface fields = data.insertRowMeta;
 			for (int i = 0; i < fields.size(); i++)
 			{
 				if (i > 0) sb.append(", ");
-
-				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+				ColumnType columnType = data.colSpecs.get(i).type;
+				switch (columnType) {
+				case NUMERIC:
+					sb.append("TMPFILLERCOL").append(i).append(" FILLER VARCHAR(1000), ");
+					sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+					sb.append(" as TO_NUMBER(").append("TMPFILLERCOL").append(i).append(")");
+					break;
+				default:
+					sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+					break;
+				}
 			}
 			sb.append(")");
 		}
@@ -302,6 +338,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		// NO COMMIT does not seem to work even when the transformation setting 'make the transformation database transactional' is on
 		// sb.append("NO COMMIT");
 		
+		logDebug("copy stmt: "+sb.toString());
+		
 		return sb.toString();
 	}
 
@@ -312,7 +350,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		Object[] insertRowData = r; 
 		Object[] outputRowData = r;
 
-		if ( meta.specifyFields() )  {
+		if ( specifyFields() )  {
 			insertRowData = new Object[data.selectedRowFieldIndices.length];
 			for (int idx=0;idx<data.selectedRowFieldIndices.length;idx++)
 			{
