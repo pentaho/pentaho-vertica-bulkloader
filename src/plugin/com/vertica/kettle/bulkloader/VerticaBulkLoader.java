@@ -54,14 +54,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 	{
 		super(stepMeta, stepDataInterface, copyNr, transMeta, trans);
 	}
-	
-	private boolean specifyFields() {
-//		We need to always specify fields mapping because we need to handle the 
-//		case for Numeric type which need a filler column in the mapping.
-//		return meta.specifyFields();
-		return true;
-	}
 
+	
 	@Override
 	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException {
 		meta = (VerticaBulkLoaderMeta) smi;
@@ -89,7 +83,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 
 			RowMetaInterface tableMeta = meta.getTableRowMetaInterface();
 
-			if (!specifyFields()) {
+			if (!meta.specifyFields()) {
 				
 				// Just take the whole input row
 				data.insertRowMeta = getInputRowMeta().clone();
@@ -102,6 +96,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 					ValueMetaInterface inputValueMeta = data.insertRowMeta.getValueMeta(insertFieldIdx);
 					ValueMetaInterface insertValueMeta = inputValueMeta.clone();
 					ValueMetaInterface targetValueMeta = tableMeta.getValueMeta(insertFieldIdx);
+					insertValueMeta.setName(targetValueMeta.getName());
+					data.insertRowMeta.setValueMeta(insertFieldIdx, insertValueMeta);
 					ColumnSpec cs = getColumnSpecFromField(inputValueMeta, insertValueMeta, targetValueMeta);
 					data.colSpecs.add(insertFieldIdx, cs);
 				}
@@ -288,26 +284,24 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 						)
 		);
 
-		if (specifyFields())  {
-			sb.append(" (");
-			final RowMetaInterface fields = data.insertRowMeta;
-			for (int i = 0; i < fields.size(); i++)
-			{
-				if (i > 0) sb.append(", ");
-				ColumnType columnType = data.colSpecs.get(i).type;
-				switch (columnType) {
-				case NUMERIC:
-					sb.append("TMPFILLERCOL").append(i).append(" FILLER VARCHAR(1000), ");
-					sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
-					sb.append(" as TO_NUMBER(").append("TMPFILLERCOL").append(i).append(")");
-					break;
-				default:
-					sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
-					break;
-				}
+		sb.append(" (");
+		final RowMetaInterface fields = data.insertRowMeta;
+		for (int i = 0; i < fields.size(); i++)
+		{
+			if (i > 0) sb.append(", ");
+			ColumnType columnType = data.colSpecs.get(i).type;
+			switch (columnType) {
+			case NUMERIC:
+				sb.append("TMPFILLERCOL").append(i).append(" FILLER VARCHAR(1000), ");
+				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+				sb.append(" as TO_NUMBER(").append("TMPFILLERCOL").append(i).append(")");
+				break;
+			default:
+				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+				break;
 			}
-			sb.append(")");
 		}
+		sb.append(")");
 
 		sb.append(" FROM STDIN NATIVE ");
 
@@ -350,7 +344,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		Object[] insertRowData = r; 
 		Object[] outputRowData = r;
 
-		if ( specifyFields() )  {
+		if ( meta.specifyFields() )  {
 			insertRowData = new Object[data.selectedRowFieldIndices.length];
 			for (int idx=0;idx<data.selectedRowFieldIndices.length;idx++)
 			{
