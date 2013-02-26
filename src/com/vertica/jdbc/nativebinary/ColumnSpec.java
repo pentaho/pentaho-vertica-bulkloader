@@ -75,14 +75,18 @@ public class ColumnSpec {
 	private CharBuffer	charBuffer;
 	private CharsetEncoder	charEncoder;
 	private ByteBuffer	mainBuffer;
-	private final Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-	private static final Calendar julianStartDateCalendar;
+	private final Calendar calendarLocalTZ = Calendar.getInstance();
+	private final Calendar calendarUTC = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+	private static final Calendar julianStartDateCalendarUTC;
+	private static final Calendar julianStartDateCalendarLocalTZ;
 
 	static {
-		julianStartDateCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-		julianStartDateCalendar.clear();
-		julianStartDateCalendar.set(2000, 0, 1, 0, 0, 0);
-
+		julianStartDateCalendarUTC = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		julianStartDateCalendarUTC.clear();
+		julianStartDateCalendarUTC.set(2000, 0, 1, 0, 0, 0);
+		julianStartDateCalendarLocalTZ = Calendar.getInstance();
+		julianStartDateCalendarLocalTZ.clear();
+		julianStartDateCalendarLocalTZ.set(2000, 0, 1, 0, 0, 0);
 	}
 
 	public ColumnSpec(PrecisionScaleWidthType precisionScaleWidthType, int precision, int scale) {
@@ -154,11 +158,11 @@ public class ColumnSpec {
 			case DATE:        
 				//Get Julian date for 01/01/2000
 				long julianStart = toJulian(2000, 1, 1);
-				calendar.setTime(valueMeta.getDate(value));
+				calendarLocalTZ.setTime(valueMeta.getDate(value));
 				long julianEnd = toJulian(
-						calendar.get(Calendar.YEAR), 
-						calendar.get(Calendar.MONTH)+1,
-						calendar.get(Calendar.DAY_OF_MONTH)
+						calendarLocalTZ.get(Calendar.YEAR), 
+						calendarLocalTZ.get(Calendar.MONTH)+1,
+						calendarLocalTZ.get(Calendar.DAY_OF_MONTH)
 						);
  				this.mainBuffer.putLong(new Long(julianEnd - julianStart));
 				break;
@@ -188,31 +192,33 @@ public class ColumnSpec {
 				break;
 			case TIME:
 				// 64-bit integer in little-endian format containing the number of microseconds since midnight in the UTC time zone. 
-				calendar.setTime(valueMeta.getDate(value)); 
-				milliSeconds = calendar.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
-					+ calendar.get(Calendar.MINUTE) * 60 * 1000
-					+ calendar.get(Calendar.SECOND) * 1000
-					+ calendar.get(Calendar.MILLISECOND);
+				calendarLocalTZ.setTime(valueMeta.getDate(value));
+				milliSeconds = calendarLocalTZ.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
+					+ calendarLocalTZ.get(Calendar.MINUTE) * 60 * 1000
+					+ calendarLocalTZ.get(Calendar.SECOND) * 1000
+					+ calendarLocalTZ.get(Calendar.MILLISECOND);
 				this.mainBuffer.putLong(milliSeconds*1000);
 				break;
 			case TIMETZ:
 				// 64-bit value where Upper 40 bits contain the number of microseconds since midnight and Lower 24 bits contain time zone as the UTC offset in microseconds calculated as follows: Time zone is logically from -24hrs to +24hrs from UTC. Instead it is represented here as a number between 0hrs to 48hrs. Therefore, 24hrs should be added to the actual time zone to calculate it.
-				calendar.setTime(valueMeta.getDate(value));
-				milliSeconds = calendar.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
-					+ calendar.get(Calendar.MINUTE) * 60 * 1000
-					+ calendar.get(Calendar.SECOND) * 1000
-					+ calendar.get(Calendar.MILLISECOND);
+				calendarUTC.setTime(valueMeta.getDate(value));
+				milliSeconds = calendarUTC.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
+					+ calendarUTC.get(Calendar.MINUTE) * 60 * 1000
+					+ calendarUTC.get(Calendar.SECOND) * 1000
+					+ calendarUTC.get(Calendar.MILLISECOND);
 				final long timeZoneOffsetMicroseconds = 24 * 3600 ;
 				this.mainBuffer.putLong(((milliSeconds * 1000) << 8*3) + timeZoneOffsetMicroseconds);
 				break;
 			case TIMESTAMP:
-				calendar.setTime(valueMeta.getDate(value));
-				milliSeconds = calendar.getTimeInMillis() - julianStartDateCalendar.getTimeInMillis();
+				// 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000 00:00:00.
+				calendarLocalTZ.setTime(valueMeta.getDate(value));
+				milliSeconds = calendarLocalTZ.getTimeInMillis() - julianStartDateCalendarLocalTZ.getTimeInMillis();
 				this.mainBuffer.putLong(new Long(milliSeconds * 1000));
 				break;
 			case TIMESTAMPTZ:
-				calendar.setTime(valueMeta.getDate(value));
-				milliSeconds = calendar.getTimeInMillis() - julianStartDateCalendar.getTimeInMillis();
+				// A 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000 00:00:00 in the UTC timezone.
+				calendarUTC.setTime(valueMeta.getDate(value));
+				milliSeconds = calendarUTC.getTimeInMillis() - julianStartDateCalendarUTC.getTimeInMillis();
 				this.mainBuffer.putLong(new Long(milliSeconds * 1000));
 				break;
 			case VARBINARY:
