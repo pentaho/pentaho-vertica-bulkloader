@@ -293,11 +293,13 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 			switch (columnType) {
 			case NUMERIC:
 				sb.append("TMPFILLERCOL").append(i).append(" FILLER VARCHAR(1000), ");
-				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+				// Force columns to be quoted:
+				sb.append(databaseMeta.getStartQuote() + fields.getValueMeta(i).getName() + databaseMeta.getEndQuote());
 				sb.append(" as TO_NUMBER(").append("TMPFILLERCOL").append(i).append(")");
 				break;
 			default:
-				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+				// Force columns to be quoted:
+				sb.append(databaseMeta.getStartQuote() + fields.getValueMeta(i).getName() + databaseMeta.getEndQuote());
 				break;
 			}
 		}
