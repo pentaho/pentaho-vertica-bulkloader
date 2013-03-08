@@ -192,6 +192,7 @@ public class ColumnSpec {
 				break;
 			case TIME:
 				// 64-bit integer in little-endian format containing the number of microseconds since midnight in the UTC time zone. 
+				// We actually use the local time instead of the UTC time because UTC time was giving wrong results.
 				calendarLocalTZ.setTime(valueMeta.getDate(value));
 				milliSeconds = calendarLocalTZ.get(Calendar.HOUR_OF_DAY) * 3600 * 1000
 					+ calendarLocalTZ.get(Calendar.MINUTE) * 60 * 1000
