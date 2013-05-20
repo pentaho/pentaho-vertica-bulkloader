@@ -6,6 +6,8 @@
 
 	  <tstamp prefix="start"/>
 
+	<import file="build-res/subfloor.xml" />
+	
     <property name="basedir"
             value="."
             description="Base directory for all project artifacts (jar, zip, tar.gz, etc...)" />
