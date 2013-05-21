@@ -10,7 +10,7 @@
     </configurations>
     
     <publications>
-    	<artifact name="${ivy.artifact.id}" type="zip" conf="obf" />
+    	<artifact name="${ivy.artifact.id}" type="zip" conf="default" />
     	<artifact name="${ivy.artifact.id}" m:classifier="sources" type="source" ext="jar" conf="source" />
     </publications>
     
