@@ -66,7 +66,6 @@
 	  <!-- set global properties for this build -->
 	
 	  <property name="src"        			location="src"/> 
-	  <property name="classes"        		location="classes"/> 
 	  <property name="lib"        			location="lib"/>
 	  <property name="testlib"        			location="test-lib"/>	  
 	  <property name="dist"        		location="dist"/>
@@ -78,10 +77,10 @@
 	       ==========================
 	  -->
 
-	  <target name="compile" depends="init, resolve" description="compile the source " >
+	  <target name="compile.compile" depends="init, resolve" description="compile the source " >
 	  	<echo>Compiling VerticaBulkLoader...</echo>
 	    <javac debug="true" debuglevel="lines,vars,source"  srcdir="${src}" 
-	    	   destdir="${classes}">
+	    	   destdir="${classes.dir}">
 
 	    	<classpath id="cpath">
 				<fileset dir="${lib}"		includes="*.jar"/>
@@ -97,7 +96,7 @@
 
 	  <target name="copy" depends="compile" description="copy images etc to classes directory" >
 	  	<echo>Copying images etc to classes directory...</echo>
-	    <copy todir="${classes}">
+	    <copy todir="${classes.dir}">
 	    	<fileset 
 	    		dir="${src}" 
 	    		includes="**/*.png,**/*.xml,**/*.properties"/>
