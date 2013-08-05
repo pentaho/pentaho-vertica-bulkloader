@@ -254,39 +254,36 @@ public class ColumnSpec {
 	}
   
   
-/**
-  * Returns the Julian day number that begins at noon of
-  * this day, Positive year signifies A.D., negative year B.C.
-  * Remember that the year after 1 B.C. was 1 A.D.
-  * NOTE THAT day and month are base 1 (January == 1)
-  * ref :
-  *  Numerical Recipes in C, 2nd ed., Cambridge University Press 1992
-  */
-  // Gregorian Calendar adopted Oct. 15, 1582 (2299161)
-  public static int JGREG= 15 + 31*(10+12*1582);
-  public static double HALFSECOND = 0.5;
+	/**
+	 * Returns the Julian Day Number from a Julian or Gregorian calendar date.
+	 * The result is rounded to a Long.
+	 * <p>
+	 * @param year
+	 * @param month (Jan=1, ...)
+	 * @param day (1, ...)
+	 * @return julian day number
+	 * @see http://en.wikipedia.org/wiki/Julian_day
+	 */
+	private static long toJulian(int year, int month, int day) {
+		// 1582.10.15 the day the Gregorian calendar went into effect:
+		final long chronologicalJulianDayNumber = 1582*10000 + 10*100 + 15;
 
-  private static long toJulian(int year, int month, int day) {
-   int julianYear = year;
-   if (year < 0) julianYear++;
-   int julianMonth = month;
-   if (month > 2) {
-     julianMonth++;
-   }
-   else {
-     julianYear--;
-     julianMonth += 13;
-   }
+		long a = (long)((14 - month)/12);
+		long y = year + 4800 - a;
+		long m = month + 12*a - 3;
+		double jdn;
 
-   double julian = (java.lang.Math.floor(365.25 * julianYear)
-        + java.lang.Math.floor(30.6001*julianMonth) + day + 1720995.0);
-   if (day + 31 * (month + 12 * year) >= JGREG) {
-     // change over to Gregorian calendar
-     int ja = (int)(0.01 * julianYear);
-     julian += 2 - ja + (0.25 * ja);
-   }
-   return (long) java.lang.Math.floor(julian);
- }
+		if((year*10000 + month*100 + day) >= chronologicalJulianDayNumber) {
+			//  if starting from a Gregorian calendar date compute: 
+			jdn = day + (long)((153*m+2)/5) + 365*y + (long)(y/4) - (long)(y/100) + (long)(y/400) - 32045;
+		}
+		else {
+			// Otherwise, if starting from a Julian calendar date compute:
+			jdn = day + (long)((153*m+2)/5) + 365*y + (long)(y/4) - 32083;
+		}
+
+		return Math.round(jdn);
+	}
   
   
   
