@@ -39,6 +39,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
 import com.vertica.jdbc.nativebinary.ColumnSpec;
+import com.vertica.jdbc.nativebinary.ColumnType;
 import com.vertica.jdbc.nativebinary.StreamEncoder;
 
 
@@ -54,6 +55,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		super(stepMeta, stepDataInterface, copyNr, transMeta, trans);
 	}
 
+	
 	@Override
 	public boolean processRow(StepMetaInterface smi, StepDataInterface sdi) throws KettleException {
 		meta = (VerticaBulkLoaderMeta) smi;
@@ -94,6 +96,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 					ValueMetaInterface inputValueMeta = data.insertRowMeta.getValueMeta(insertFieldIdx);
 					ValueMetaInterface insertValueMeta = inputValueMeta.clone();
 					ValueMetaInterface targetValueMeta = tableMeta.getValueMeta(insertFieldIdx);
+					insertValueMeta.setName(targetValueMeta.getName());
+					data.insertRowMeta.setValueMeta(insertFieldIdx, insertValueMeta);
 					ColumnSpec cs = getColumnSpecFromField(inputValueMeta, insertValueMeta, targetValueMeta);
 					data.colSpecs.add(insertFieldIdx, cs);
 				}
@@ -169,6 +173,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		return true;
 	}
 
+
 	private ColumnSpec getColumnSpecFromField(ValueMetaInterface inputValueMeta, ValueMetaInterface insertValueMeta, ValueMetaInterface targetValueMeta) {
 		logBasic("Mapping input field " + inputValueMeta.getName() + " (" + inputValueMeta.getTypeDesc() + ")"
 				+ " to target column " + insertValueMeta.getName() + " (" + targetValueMeta.getOriginalColumnTypeName() + ") " );
@@ -186,23 +191,41 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		} else if (targetColumnTypeName.equals("VARCHAR")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
 		} else if (targetColumnTypeName.equals("DATE")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.DATE);
 		} else if (targetColumnTypeName.equals("TIME")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIME);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIME);
 		} else if (targetColumnTypeName.equals("TIMETZ")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMETZ);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMETZ);
 		} else if (targetColumnTypeName.equals("TIMESTAMP")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMP);
 		} else if (targetColumnTypeName.equals("TIMESTAMPTZ")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMPTZ);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.TIMESTAMPTZ);
 		} else if (targetColumnTypeName.equals("INTERVAL") || targetColumnTypeName.equals("INTERVAL DAY TO SECOND")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
+			if (inputValueMeta.isDate() == false) 
+				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
+			else 
+				return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
 		} else if (targetColumnTypeName.equals("BINARY")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
 		} else if (targetColumnTypeName.equals("VARBINARY")) {
 			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
 		} else if (targetColumnTypeName.equals("NUMERIC")) {
-			return new ColumnSpec(ColumnSpec.ConstantWidthType.NUMERIC);
+			return new ColumnSpec(ColumnSpec.PrecisionScaleWidthType.NUMERIC, targetValueMeta.getLength(),targetValueMeta.getPrecision());
 		}
 		throw new IllegalArgumentException("Column type " + targetColumnTypeName + " not supported."); //$NON-NLS-1$ 
 	}
@@ -261,17 +284,26 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 						)
 		);
 
-		if (meta.specifyFields())  {
-			final RowMetaInterface fields = data.insertRowMeta;
-			sb.append(" (");
-			for (int i = 0; i < fields.size(); i++)
-			{
-				if (i > 0) sb.append(", ");
-
-				sb.append(databaseMeta.quoteField(fields.getValueMeta(i).getName()));
+		sb.append(" (");
+		final RowMetaInterface fields = data.insertRowMeta;
+		for (int i = 0; i < fields.size(); i++)
+		{
+			if (i > 0) sb.append(", ");
+			ColumnType columnType = data.colSpecs.get(i).type;
+			switch (columnType) {
+			case NUMERIC:
+				sb.append("TMPFILLERCOL").append(i).append(" FILLER VARCHAR(1000), ");
+				// Force columns to be quoted:
+				sb.append(databaseMeta.getStartQuote() + fields.getValueMeta(i).getName() + databaseMeta.getEndQuote());
+				sb.append(" as TO_NUMBER(").append("TMPFILLERCOL").append(i).append(")");
+				break;
+			default:
+				// Force columns to be quoted:
+				sb.append(databaseMeta.getStartQuote() + fields.getValueMeta(i).getName() + databaseMeta.getEndQuote());
+				break;
 			}
-			sb.append(")");
 		}
+		sb.append(")");
 
 		sb.append(" FROM STDIN NATIVE ");
 
@@ -301,6 +333,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		// XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
 		// NO COMMIT does not seem to work even when the transformation setting 'make the transformation database transactional' is on
 		// sb.append("NO COMMIT");
+		
+		logDebug("copy stmt: "+sb.toString());
 		
 		return sb.toString();
 	}
