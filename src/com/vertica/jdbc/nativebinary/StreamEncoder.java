@@ -67,6 +67,7 @@ public class StreamEncoder {
 
 		for (ColumnSpec column : columns) {
 			switch (column.type) {
+				case NUMERIC:
 				case CHAR:
 				case VARCHAR:
 					column.setCharBuffer(charBuffer);
@@ -76,6 +77,7 @@ public class StreamEncoder {
 					break;
 			}
 			switch (column.type) {
+				case NUMERIC:
 				case VARCHAR:
 				case VARBINARY:
 					this.rowMaxSize += MAX_CHAR_LENGTH;
