@@ -9,16 +9,16 @@
  * the license for the specific language governing your rights and limitations.
 */
 
-package plugin.com.vertica.kettle.bulkloader;
+package org.pentaho.di.verticabulkload;
 
-import com.vertica.jdbc.nativebinary.ColumnSpec;
+import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.trans.step.BaseStepData;
 import org.pentaho.di.trans.step.StepDataInterface;
 
-import com.vertica.jdbc.nativebinary.StreamEncoder;
+import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.util.List;

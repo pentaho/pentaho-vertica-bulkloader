@@ -1,4 +1,4 @@
-package com.vertica.jdbc.nativebinary;
+package org.pentaho.di.verticabulkload.nativebinary;
 
 public enum ColumnType {
 	INTEGER,
