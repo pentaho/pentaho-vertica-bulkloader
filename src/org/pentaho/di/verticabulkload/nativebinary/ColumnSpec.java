@@ -1,4 +1,4 @@
-package com.vertica.jdbc.nativebinary;
+package org.pentaho.di.verticabulkload.nativebinary;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;

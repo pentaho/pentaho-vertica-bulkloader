@@ -9,7 +9,7 @@
  * the license for the specific language governing your rights and limitations.
  */
 
-package plugin.com.vertica.kettle.bulkloader;
+package org.pentaho.di.verticabulkload;
 
 import java.util.List;
 import java.util.Map;
