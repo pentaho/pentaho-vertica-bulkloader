@@ -9,7 +9,7 @@
  * the license for the specific language governing your rights and limitations.
  */
 
-package plugin.com.vertica.kettle.bulkloader;
+package org.pentaho.di.verticabulkload;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -38,9 +38,9 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
-import com.vertica.jdbc.nativebinary.ColumnSpec;
-import com.vertica.jdbc.nativebinary.ColumnType;
-import com.vertica.jdbc.nativebinary.StreamEncoder;
+import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
+import org.pentaho.di.verticabulkload.nativebinary.ColumnType;
+import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
 
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface
