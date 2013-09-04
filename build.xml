@@ -6,7 +6,7 @@
 
 	  <tstamp prefix="start"/>
 
-	<import file="build-res/subfloor.xml" />
+	<import file="build-res/subfloor-pkg.xml" />
 	
     <property name="basedir"
             value="."
@@ -19,7 +19,9 @@
     <property name="bin.dir" 
             value="${basedir}/bin" 
             description="Base directory for all non-dist build output" />
-
+	
+	<property name="lib.provided.dir" value="lib-provided" description="Ivy dependencies of 'provided' configuration are placed here"/>
+	  
     <property name ="subfloor.resources.dir"
             value ='${basedir}/.build'/>
   <property name="antcontrib.build.cache.dir"
@@ -70,7 +72,36 @@
 	  <property name="testlib"        			location="test-lib"/>	  
 	  <property name="dist"        		location="dist"/>
 	  <property name="libext"     			location="libext"/>
-	    
+	   
+	<!-- Setup the compile classpath to include the provided jars and the api jar -->
+	  <path id="classpath">
+	    <fileset dir="${lib.dir}">
+	      <include name="**/*.jar" />
+	    </fileset>
+	    <fileset dir="${lib.provided.dir}">
+	      <include name="**/*.jar" />
+	    </fileset>
+	  </path>
+	
+	<!-- Setup the classpath used for testing to include the provided jars -->
+	  <path id="test.classpath">
+	    <fileset dir="${lib.dir}">
+	      <include name="**/*.jar" />
+	    </fileset>
+	    <fileset dir="${lib.provided.dir}">
+	      <include name="**/*.jar" />
+	    </fileset>
+	    <fileset dir="${testlib.dir}">
+	      <include name="**/*.jar" />
+	    </fileset>
+	    <pathelement path="${testclasses.dir}" />
+	  </path>
+	
+	<target name="clean-jars" depends="subfloor.clean-jars">
+	    <delete dir="${lib.provided.dir}"/>
+	  </target>
+	
+	
 	  <!--
 	       ==========================
 	            Compile the code
@@ -83,7 +114,7 @@
 	    	   destdir="${classes.dir}">
 
 	    	<classpath id="cpath">
-				<fileset dir="${lib}"		includes="*.jar"/>
+				<path refid="classpath"/>
 				<fileset dir="${libext}"		includes="*.jar"/>				
             </classpath>
 	    </javac>
@@ -136,15 +167,27 @@
 	  -->
 	<target name="default" depends="deploy" description="default = build all"/>
 	
-  <target name="package" depends="clean, init, dist">
-  	<mkdir dir="${bin.dir}/${ivy.artifact.id}" />
-  	<copy todir="${bin.dir}/${ivy.artifact.id}">
-  	     <fileset dir="${dist}"
-  		         includes="**/*.jar" />
-	</copy>
-    <zip destfile="${dist}/${ivy.artifact.id}-${project.revision}.zip" 
-         basedir="${bin.dir}"
-         includes="${ivy.artifact.id}/*.jar"/>
-  </target>
+	<!-- Resolve provided dependencies to a separate directory -->
+	<target name="resolve-default" depends="subfloor.resolve-default">
+	  <ivy:resolve file="${ivyfile}" conf="provided" />
+	  <ivy:retrieve conf="provided" pattern="${lib.provided.dir}/[module]-[revision](-[classifier]).[ext]" symlink="${ivy.use.symlinks.internal}" />
+	</target>
+	
+	<!-- Override assemble.copy-libs to put our jar in the root of the package -->
+    <target name="assemble.copy-libs">
+      <copy todir="${approot.stage.dir}/lib">
+        <fileset dir="${lib.dir}" />
+      </copy>
+      <copy todir="${approot.stage.dir}">
+        <fileset file="${dist.dir}/${ivy.artifact.id}-${project.revision}.jar" />
+      </copy>
+    </target>
+	
+	<target name="assemble" depends="assemble.init,assemble.copy-libs">
+	    <copy todir="${approot.stage.dir}" overwrite="true">
+	      <fileset dir="${package.resdir}" excludes=".gitignore"/>
+	    </copy>
+	    <chmod perm="a+x" dir="${stage.dir}" includes="**/*.sh" />
+	  </target>
 
 </project>
