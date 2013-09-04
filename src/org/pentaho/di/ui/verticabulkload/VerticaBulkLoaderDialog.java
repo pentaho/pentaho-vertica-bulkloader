@@ -9,7 +9,7 @@
  * the license for the specific language governing your rights and limitations.
 */
 
-package org.pentaho.di.verticabulkload;
+package org.pentaho.di.ui.verticabulkload;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -69,6 +69,7 @@ import org.pentaho.di.ui.core.widget.ColumnInfo;
 import org.pentaho.di.ui.core.widget.TableView;
 import org.pentaho.di.ui.core.widget.TextVar;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
+import org.pentaho.di.verticabulkload.VerticaBulkLoaderMeta;
 
 
 
@@ -79,7 +80,7 @@ import org.pentaho.di.ui.trans.step.BaseStepDialog;
  */
 public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialogInterface
 {
-	private static Class<?> PKG = VerticaBulkLoaderDialog.class; // for i18n purposes, needed by Translator2!!
+	private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
 	private CTabFolder   wTabFolder;
 	private FormData     fdTabFolder;

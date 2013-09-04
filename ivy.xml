@@ -4,6 +4,7 @@
     
     <configurations>
     	<conf name="default"/>
+    	<conf name="provided"/>
     	<conf name="runtime"/>
     	<conf name="source" />
         <conf name="zip" />
@@ -17,18 +18,18 @@
     
     <dependencies defaultconf="default->default">
         <!--  third party dependencies -->
-        <dependency org="commons-io"            name="commons-io"         rev="1.4"   transitive="false"/>          
+        <dependency org="commons-io"            name="commons-io"         rev="1.4"   transitive="false" conf="provided->default"/>          
      
-        <dependency org="commons-logging"       name="commons-logging"    rev="1.1"   transitive="false"/>
+        <dependency org="commons-logging"       name="commons-logging"    rev="1.1"   transitive="false" conf="provided->default"/>
         <dependency org="net.sf.flexjson"       name="flexjson" rev="2.1" transitive="false" conf="default->default"/>
         <dependency org="org.json" name="json" rev="3.1.1" conf="default->default"/>
 
         
-        <dependency org="javax.servlet" name="servlet-api" rev="2.4" />
+        <dependency org="javax.servlet" name="servlet-api" rev="2.4" conf="provided->default"/>
    
-        <dependency org="pentaho-kettle" name="kettle-core"   rev="${dependency.kettle.revision}" changing="true"/>
-        <dependency org="pentaho-kettle" name="kettle-engine" rev="${dependency.kettle.revision}" changing="true"/>
-        <dependency org="pentaho-kettle" name="kettle-ui-swt"     rev="${dependency.kettle.revision}" changing="true"/>        
+        <dependency org="pentaho-kettle" name="kettle-core"   rev="${dependency.kettle.revision}" changing="true" conf="provided->default"/>
+        <dependency org="pentaho-kettle" name="kettle-engine" rev="${dependency.kettle.revision}" changing="true" conf="provided->default"/>
+        <dependency org="pentaho-kettle" name="kettle-ui-swt"     rev="${dependency.kettle.revision}" changing="true" conf="provided->default"/>        
 
         <!--  Testing dependencies -->
         <dependency org="junit"          name="junit"          rev="4.4" conf="test->default" />
