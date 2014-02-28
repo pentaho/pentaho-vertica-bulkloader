@@ -184,7 +184,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		logBasic("Mapping input field " + inputValueMeta.getName() + " (" + inputValueMeta.getTypeDesc() + ")"
 				+ " to target column " + insertValueMeta.getName() + " (" + targetValueMeta.getOriginalColumnTypeName() + ") " );
 
-		String targetColumnTypeName = targetValueMeta.getOriginalColumnTypeName();
+		String targetColumnTypeName = targetValueMeta.getOriginalColumnTypeName().toUpperCase();
 
 		if (targetColumnTypeName.equals("INTEGER") || targetColumnTypeName.equals("BIGINT")) {
 			return new ColumnSpec(ColumnSpec.ConstantWidthType.INTEGER_64);
