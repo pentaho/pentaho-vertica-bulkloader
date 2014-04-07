@@ -195,7 +195,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 		} else if (targetColumnTypeName.equals("CHAR")) {
 			return new ColumnSpec(ColumnSpec.UserDefinedWidthType.CHAR, targetValueMeta.getLength());
 		} else if (targetColumnTypeName.equals("VARCHAR")) {
-			return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR);
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARCHAR, targetValueMeta.getLength());
 		} else if (targetColumnTypeName.equals("DATE")) {
 			if (inputValueMeta.isDate() == false) 
 				throw new IllegalArgumentException("Field " + inputValueMeta.getName() + " must be a Date compatible type to match target column " + insertValueMeta.getName());
@@ -227,9 +227,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface
 			else 
 				return new ColumnSpec(ColumnSpec.ConstantWidthType.INTERVAL);
 		} else if (targetColumnTypeName.equals("BINARY")) {
-			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY, targetValueMeta.getLength());
 		} else if (targetColumnTypeName.equals("VARBINARY")) {
-			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY);
+			return new ColumnSpec(ColumnSpec.VariableWidthType.VARBINARY, targetValueMeta.getLength());
 		} else if (targetColumnTypeName.equals("NUMERIC")) {
 			return new ColumnSpec(ColumnSpec.PrecisionScaleWidthType.NUMERIC, targetValueMeta.getLength(),targetValueMeta.getPrecision());
 		}

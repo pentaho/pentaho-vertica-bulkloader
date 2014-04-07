@@ -43,7 +43,8 @@ public class StreamEncoder {
 	private static final int MAX_CHAR_LENGTH = 65000;
 	
 	// TODO: maybe this needs to be a configurable setting, but I don't know how important it is.
-	private static final int NUM_ROWS_TO_BUFFER = 1000;
+	private static final int NUM_ROWS_TO_BUFFER = 500;
+	private static final int MAXIMUM_BUFFER_SIZE = Integer.MAX_VALUE - 8;
     
     private int columnCount;
     private int rowMaxSize;
@@ -93,19 +94,10 @@ public class StreamEncoder {
 				default:
 					break;
 			}
-			switch (column.type) {
-				case NUMERIC:
-				case VARCHAR:
-				case VARBINARY:
-					this.rowMaxSize += MAX_CHAR_LENGTH;
-					break;
-				default:
-					this.rowMaxSize += column.bytes;
-					break;
-			}
+			this.rowMaxSize += column.getMaxLength();
 		}
 
-		this.buffer = ByteBuffer.allocate(this.rowMaxSize * NUM_ROWS_TO_BUFFER);
+		this.buffer = ByteBuffer.allocate(countMainByteBufferSize());
 		this.buffer.order(ByteOrder.LITTLE_ENDIAN);
 		this.buffer.clear();
 
@@ -113,6 +105,11 @@ public class StreamEncoder {
 			column.setMainBuffer(buffer);
 		}
 	}
+    
+    int countMainByteBufferSize() {
+      long bufferSize = (long) this.rowMaxSize * NUM_ROWS_TO_BUFFER;
+      return (int) ( bufferSize > 0 && bufferSize < MAXIMUM_BUFFER_SIZE ? bufferSize : MAXIMUM_BUFFER_SIZE);
+    }
     
 	public void writeHeader() throws IOException {
 		// File signature

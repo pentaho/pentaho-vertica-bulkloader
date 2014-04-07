@@ -89,6 +89,7 @@ public class ColumnSpec {
 	public final ColumnType type;
 	public int bytes;
 	public final int scale;
+	private final int maxLength;
 	private CharBuffer	charBuffer;
 	private CharsetEncoder	charEncoder;
 	private ByteBuffer	mainBuffer;
@@ -110,24 +111,28 @@ public class ColumnSpec {
 		this.type = precisionScaleWidthType.type;
 		this.bytes = -1 ; // NUMERIC is encoded as VARCHAR (length = -1)
 		this.scale = scale;
+		this.maxLength = precision;
 	}
 
 	public ColumnSpec(UserDefinedWidthType userDefinedWidthType, int bytes) {
 		this.type = userDefinedWidthType.type;
 		this.bytes = bytes;
 		this.scale = 0;
+		this.maxLength = bytes;
 	}
 
 	public ColumnSpec(ConstantWidthType constantWidthType) {
 		this.type = constantWidthType.type;
 		this.bytes = constantWidthType.bytes;
 		this.scale = 0;
+		this.maxLength = constantWidthType.bytes;
 	}
 
-	public ColumnSpec(VariableWidthType variableWidthType) {
+	public ColumnSpec(VariableWidthType variableWidthType, int maxlenght) {
 		this.type = variableWidthType.type;
 		this.bytes = variableWidthType.bytes;
 		this.scale = 0;
+		this.maxLength = maxlenght;
 	}
 
 	public void setCharBuffer(CharBuffer charBuffer) {
@@ -301,6 +306,13 @@ public class ColumnSpec {
 
 		return Math.round(jdn);
 	}
+
+	/**
+   * @return the maxLenght
+   */
+  public int getMaxLength() {
+    return maxLength;
+  }
   
   
   
