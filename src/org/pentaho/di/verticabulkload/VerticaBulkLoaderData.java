@@ -29,40 +29,35 @@ import java.io.IOException;
 import java.io.PipedInputStream;
 import java.util.List;
 
-public class VerticaBulkLoaderData extends BaseStepData implements StepDataInterface
-{
-	protected  Database db;
-    protected DatabaseMeta databaseMeta;
+public class VerticaBulkLoaderData extends BaseStepData implements StepDataInterface {
+  protected Database db;
+  protected DatabaseMeta databaseMeta;
 
-    protected StreamEncoder encoder;
-    
-    protected  int selectedRowFieldIndices[];
-    
-    protected RowMetaInterface outputRowMeta;
-    protected RowMetaInterface insertRowMeta;
+  protected StreamEncoder encoder;
 
-    protected PipedInputStream pipedInputStream;
-    
-    protected volatile Thread workerThread;
-    
-    protected List<ColumnSpec> colSpecs;
+  protected int[] selectedRowFieldIndices;
 
-    protected VerticaBulkLoaderData()
-	{
-		super();
-		
-		db=null;
-	}
-    
-    
-   public void close() throws IOException {
+  protected RowMetaInterface outputRowMeta;
+  protected RowMetaInterface insertRowMeta;
 
-     if (encoder != null) {
-       encoder.close();
-     }
-                                 
-   }
-    
-   
+  protected PipedInputStream pipedInputStream;
+
+  protected volatile Thread workerThread;
+
+  protected List<ColumnSpec> colSpecs;
+
+  protected VerticaBulkLoaderData() {
+    super();
+
+    db = null;
+  }
+
+  public void close() throws IOException {
+
+    if ( encoder != null ) {
+      encoder.close();
+    }
+
+  }
 
 }
