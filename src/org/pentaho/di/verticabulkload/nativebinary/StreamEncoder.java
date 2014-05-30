@@ -103,8 +103,13 @@ public class StreamEncoder {
     }
   }
 
+  /**
+   * For junit test purpose
+   * 
+   * @return the rowMaxSize
+   */
   int countMainByteBufferSize() {
-    long bufferSize = (long) this.rowMaxSize * NUM_ROWS_TO_BUFFER;
+    long bufferSize = (long) getRowMaxSize() * NUM_ROWS_TO_BUFFER;
     return (int) ( bufferSize > 0 && bufferSize < MAXIMUM_BUFFER_SIZE ? bufferSize : MAXIMUM_BUFFER_SIZE );
   }
 
@@ -240,6 +245,17 @@ public class StreamEncoder {
         buf.put( index + i, bytes[i] );
       }
     }
+  }
+
+  public ByteBuffer getBuffer() {
+    return this.buffer;
+  }
+
+  /**For junit test purpose
+   * @return the rowMaxSize
+   */
+  int getRowMaxSize() {
+    return rowMaxSize;
   }
 
 }
