@@ -101,6 +101,7 @@
 	      <include name="**/*.jar" />
 	    </fileset>
 	    <pathelement path="${testclasses.dir}" />
+	    <pathelement path="${classes.dir}" />
 	  </path>
 	
 	<target name="clean-jars" depends="subfloor.clean-jars">
