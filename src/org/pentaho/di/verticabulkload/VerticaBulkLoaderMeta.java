@@ -132,6 +132,13 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   }
 
   /**
+   * @deprecated use {@link #getTableName()} 
+   */
+  public String getTablename() {
+    return getTableName();
+  }
+
+  /**
    * @return Returns the tablename.
    */
   public String getTableName() {
