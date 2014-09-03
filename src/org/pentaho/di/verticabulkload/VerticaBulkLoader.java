@@ -289,7 +289,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     sb.append( "COPY " );
 
     sb.append( databaseMeta.getQuotedSchemaTableCombination( environmentSubstitute( meta.getSchemaName() ),
-        environmentSubstitute( meta.getTablename() ) ) );
+        environmentSubstitute( meta.getTableName() ) ) );
 
     sb.append( " (" );
     final RowMetaInterface fields = data.insertRowMeta;

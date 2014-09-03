@@ -25,6 +25,7 @@ import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Counter;
 import org.pentaho.di.core.DBCache;
+import org.pentaho.di.core.ProvidesDatabaseConnectionInformation;
 import org.pentaho.di.core.SQLStatement;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.Database;
@@ -54,7 +55,8 @@ import org.w3c.dom.Node;
     i18nPackageName = "plugin.com.vertica.kettle.bulkloader", name = "VerticaBulkLoaderMeta.TypeLongDesc",
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
     categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk" )
-public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface {
+public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface,
+    ProvidesDatabaseConnectionInformation {
   private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
   private DatabaseMeta databaseMeta;
@@ -132,7 +134,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   /**
    * @return Returns the tablename.
    */
-  public String getTablename() {
+  public String getTableName() {
     return tablename;
   }
 
@@ -704,6 +706,12 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       throw new KettleException( BaseMessages.getString( PKG, "VerticaBulkLoaderMeta.Exception.ConnectionNotDefined" ) );
     }
 
+  }
+
+  @Override
+  public String getMissingDatabaseConnectionInformationMessage() {
+    // use default message
+    return null;
   }
 
 }
