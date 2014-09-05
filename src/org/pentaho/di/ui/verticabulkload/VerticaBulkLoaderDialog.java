@@ -809,8 +809,8 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     if ( input.getSchemaName() != null ) {
       wSchema.setText( input.getSchemaName() );
     }
-    if ( input.getTablename() != null ) {
-      wTable.setText( input.getTablename() );
+    if ( input.getTableName() != null ) {
+      wTable.setText( input.getTableName() );
     }
     if ( input.getDatabaseMeta() != null ) {
       wConnection.setText( input.getDatabaseMeta().getName() );
