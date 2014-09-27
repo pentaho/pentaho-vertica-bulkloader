@@ -288,15 +288,15 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       tablename = rep.getStepAttributeString( id_step, "table" );
       specifyFields = rep.getStepAttributeBoolean( id_step, "specify_fields" );
 
-      int nrCols = rep.countNrStepAttributes( id_step, "column_name" ); //$NON-NLS-1$
-      int nrStreams = rep.countNrStepAttributes( id_step, "stream_name" ); //$NON-NLS-1$
+      int nrCols = rep.countNrStepAttributes( id_step, "field_column_name" ); //$NON-NLS-1$
+      int nrStreams = rep.countNrStepAttributes( id_step, "field_stream_name" ); //$NON-NLS-1$
 
       int nrRows = ( nrCols < nrStreams ? nrStreams : nrCols );
       allocate( nrRows );
 
       for ( int idx = 0; idx < nrRows; idx++ ) {
-        fieldDatabase[idx] = Const.NVL( rep.getStepAttributeString( id_step, idx, "column_name" ), "" ); //$NON-NLS-1$ //$NON-NLS-2$
-        fieldStream[idx] = Const.NVL( rep.getStepAttributeString( id_step, idx, "stream_name" ), "" ); //$NON-NLS-1$ //$NON-NLS-2$
+        fieldDatabase[idx] = Const.NVL( rep.getStepAttributeString( id_step, idx, "field_column_name" ), "" ); //$NON-NLS-1$ //$NON-NLS-2$
+        fieldStream[idx] = Const.NVL( rep.getStepAttributeString( id_step, idx, "field_stream_name" ), "" ); //$NON-NLS-1$ //$NON-NLS-2$
       }
 
       exceptionsFileName = rep.getStepAttributeString( id_step, "exceptions_filename" );
@@ -320,8 +320,8 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       for ( int idx = 0; idx < nrRows; idx++ ) {
         String columnName = ( idx < fieldDatabase.length ? fieldDatabase[idx] : "" );
         String streamName = ( idx < fieldStream.length ? fieldStream[idx] : "" );
-        rep.saveStepAttribute( id_transformation, id_step, idx, "column_name", columnName ); //$NON-NLS-1$
-        rep.saveStepAttribute( id_transformation, id_step, idx, "stream_name", streamName ); //$NON-NLS-1$
+        rep.saveStepAttribute( id_transformation, id_step, idx, "field_column_name", columnName ); //$NON-NLS-1$
+        rep.saveStepAttribute( id_transformation, id_step, idx, "field_stream_name", streamName ); //$NON-NLS-1$
       }
 
       rep.saveStepAttribute( id_transformation, id_step, "exceptions_filename", exceptionsFileName );
