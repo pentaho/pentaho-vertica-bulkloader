@@ -52,6 +52,10 @@ public class VerticaBulkLoaderData extends BaseStepData implements StepDataInter
     db = null;
   }
 
+  public RowMetaInterface getInsertRowMeta() {
+    return insertRowMeta;
+  }
+
   public void close() throws IOException {
 
     if ( encoder != null ) {
