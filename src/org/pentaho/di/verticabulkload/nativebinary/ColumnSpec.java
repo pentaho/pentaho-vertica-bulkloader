@@ -23,10 +23,13 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetEncoder;
 import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.TimeZone;
 
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.ValueMetaInterface;
+
+import static java.util.concurrent.TimeUnit.*;
 
 public class ColumnSpec {
   private static final byte BYTE_ZERO = (byte) 0;
@@ -86,18 +89,25 @@ public class ColumnSpec {
   private CharBuffer charBuffer;
   private CharsetEncoder charEncoder;
   private ByteBuffer mainBuffer;
-  private final Calendar calendarLocalTZ = Calendar.getInstance();
-  private final Calendar calendarUTC = Calendar.getInstance( TimeZone.getTimeZone( "UTC" ) );
-  private static final Calendar julianStartDateCalendarUTC;
-  private static final Calendar julianStartDateCalendarLocalTZ;
 
+  private final GregorianCalendar calendarLocalTZ = new GregorianCalendar();
+  private final Calendar calendarUTC = Calendar.getInstance( TimeZone.getTimeZone( "UTC" ) );
+
+  /**
+   * In Vertica, dates are stored as differences with Jan 01 2000 00:00:00.
+   * This is Julian Day Number of it (must be equal to 2451545)
+   */
+  private static final int BASE_DATE_JDN = computeJdn( 2000, 1, 1 );
+
+  /**
+   * The timestamp of Jan 01 2000 00:00:00 in UTC timezone
+   */
+  private static final long BASE_DATE_UTC_MILLIS;
   static {
-    julianStartDateCalendarUTC = Calendar.getInstance( TimeZone.getTimeZone( "UTC" ) );
-    julianStartDateCalendarUTC.clear();
-    julianStartDateCalendarUTC.set( 2000, 0, 1, 0, 0, 0 );
-    julianStartDateCalendarLocalTZ = Calendar.getInstance();
-    julianStartDateCalendarLocalTZ.clear();
-    julianStartDateCalendarLocalTZ.set( 2000, 0, 1, 0, 0, 0 );
+    Calendar calendar = Calendar.getInstance( TimeZone.getTimeZone( "UTC" ) );
+    calendar.clear();
+    calendar.set( 2000, 0, 1, 0, 0, 0 );
+    BASE_DATE_UTC_MILLIS = calendar.getTimeInMillis();
   }
 
   public ColumnSpec( PrecisionScaleWidthType precisionScaleWidthType, int precision, int scale ) {
@@ -174,13 +184,11 @@ public class ColumnSpec {
         }
         break;
       case DATE:
-        // Get Julian date for 01/01/2000
-        long julianStart = toJulian( 2000, 1, 1 );
+        // 64-bit integer in little-endian format containing the Julian day
+        // since Jan 01 2000 (J2451545)
         calendarLocalTZ.setTime( valueMeta.getDate( value ) );
-        long julianEnd =
-            toJulian( calendarLocalTZ.get( Calendar.YEAR ), calendarLocalTZ.get( Calendar.MONTH ) + 1, calendarLocalTZ
-                .get( Calendar.DAY_OF_MONTH ) );
-        this.mainBuffer.putLong( new Long( julianEnd - julianStart ) );
+        int julianEnd = computeJdn( calendarLocalTZ );
+        this.mainBuffer.putLong( julianEnd - BASE_DATE_JDN );
         break;
       case FLOAT:
         this.mainBuffer.putDouble( valueMeta.getNumber( value ) );
@@ -211,36 +219,56 @@ public class ColumnSpec {
         // zone.
         // We actually use the local time instead of the UTC time because UTC time was giving wrong results.
         calendarLocalTZ.setTime( valueMeta.getDate( value ) );
-        milliSeconds =
-            calendarLocalTZ.get( Calendar.HOUR_OF_DAY ) * 3600 * 1000 + calendarLocalTZ.get( Calendar.MINUTE ) * 60
-                * 1000 + calendarLocalTZ.get( Calendar.SECOND ) * 1000 + calendarLocalTZ.get( Calendar.MILLISECOND );
-        this.mainBuffer.putLong( milliSeconds * 1000 );
+        milliSeconds = HOURS.toMillis( calendarLocalTZ.get( Calendar.HOUR_OF_DAY ) ) +
+            MINUTES.toMillis( calendarLocalTZ.get( Calendar.MINUTE ) ) +
+            SECONDS.toMillis( calendarLocalTZ.get( Calendar.SECOND ) ) +
+            calendarLocalTZ.get( Calendar.MILLISECOND );
+        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case TIMETZ:
-        // 64-bit value where Upper 40 bits contain the number of microseconds since midnight and Lower 24 bits contain
-        // time zone as the UTC offset in microseconds calculated as follows: Time zone is logically from -24hrs to
-        // +24hrs from UTC. Instead it is represented here as a number between 0hrs to 48hrs. Therefore, 24hrs should be
-        // added to the actual time zone to calculate it.
+        // HP Vertica Documentation. Software Version: 7.1.x (Document Release Date: 3/31/2015)
+        // 64-bit value where
+        //  - Upper 40 bits contain the number of microseconds since midnight
+        //  - Lower 24 bits contain time zone as the UTC offset in microseconds calculated as follows: Time zone is
+        //    logically from -24hrs to +24hrs from UTC. Instead it is represented here as a number between 0hrs to
+        //    48hrs. Therefore, 24hrs should be added to the actual time zone to calculate it.
+
+        // AK: there is an obvious mistake in the description above
+        //        48 hours is 48*3600000=172800000 microseconds
+        //        24 bits can store 2^24= 16777216 values
+        // Here is what another doc says
+        // (https://my.vertica.com/docs/5.0/SDK/html/_timestamp_u_dx_shared_8h.htm#a143e616e0854a9dcded5dd314162e5dd):
+        // typedef int64 TimeTzADT
+        //    Represents time within a day in a timezone
+        //    The value in TimeADT consists of 2 parts:
+        //
+        //    1. The lower 24 bits (defined as ZoneFieldWidth) contains the timezone plus 24 hours, specified in
+        // seconds SQL-2008 limits the timezone itself to range between +/-14 hours
+
+        // We can store either local time and local time zone's offset or convert local time to UTC and the offset is
+        // constant in this case. The latter approach is implemented below
+
         calendarUTC.setTime( valueMeta.getDate( value ) );
-        milliSeconds =
-            calendarUTC.get( Calendar.HOUR_OF_DAY ) * 3600 * 1000 + calendarUTC.get( Calendar.MINUTE ) * 60 * 1000
-                + calendarUTC.get( Calendar.SECOND ) * 1000 + calendarUTC.get( Calendar.MILLISECOND );
-        final long timeZoneOffsetMicroseconds = 24 * 3600;
-        this.mainBuffer.putLong( ( ( milliSeconds * 1000 ) << 8 * 3 ) + timeZoneOffsetMicroseconds );
+        milliSeconds = HOURS.toMillis( calendarUTC.get( Calendar.HOUR_OF_DAY ) ) +
+            MINUTES.toMillis( calendarUTC.get( Calendar.MINUTE ) ) +
+            SECONDS.toMillis( calendarUTC.get( Calendar.SECOND ) ) +
+            calendarUTC.get( Calendar.MILLISECOND );
+        final long utcOffsetInSeconds = 24 * 3600;
+        this.mainBuffer.putLong( ( ( MILLISECONDS.toMicros( milliSeconds ) ) << 24 ) + utcOffsetInSeconds );
         break;
       case TIMESTAMP:
         // 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000
         // 00:00:00.
         calendarLocalTZ.setTime( valueMeta.getDate( value ) );
-        milliSeconds = calendarLocalTZ.getTimeInMillis() - julianStartDateCalendarLocalTZ.getTimeInMillis();
-        this.mainBuffer.putLong( new Long( milliSeconds * 1000 ) );
+        milliSeconds = computeDiffInMillisDisrespectingDst( calendarLocalTZ );
+        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case TIMESTAMPTZ:
         // A 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000
         // 00:00:00 in the UTC timezone.
         calendarUTC.setTime( valueMeta.getDate( value ) );
-        milliSeconds = calendarUTC.getTimeInMillis() - julianStartDateCalendarUTC.getTimeInMillis();
-        this.mainBuffer.putLong( new Long( milliSeconds * 1000 ) );
+        milliSeconds = calendarUTC.getTimeInMillis() - BASE_DATE_UTC_MILLIS;
+        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case VARBINARY:
         sizePosition = this.mainBuffer.position();
@@ -274,37 +302,56 @@ public class ColumnSpec {
   }
 
   /**
-   * Returns the Julian Day Number from a Julian or Gregorian calendar date. The result is rounded to a Long.
-   * <p>
-   * 
-   * @param year
-   * @param month
-   *          (Jan=1, ...)
-   * @param day
-   *          (1, ...)
-   * @return julian day number
-   * @see http://en.wikipedia.org/wiki/Julian_day
+   * Returns the Julian Day Number from a Gregorian calendar.
+   *
+   * @param calendar gregorian calendar
+   * @return the Julian day number
    */
-  private static long toJulian( int year, int month, int day ) {
-    // 1582.10.15 the day the Gregorian calendar went into effect:
-    final long chronologicalJulianDayNumber = 1582 * 10000 + 10 * 100 + 15;
+  private static int computeJdn( GregorianCalendar calendar ) {
+    // Note: Calendar.JANUARY == 0, whereas it is expected to be 1
+    return computeJdn(
+      calendar.get( Calendar.YEAR ),
+      calendar.get( Calendar.MONTH ) + 1,
+      calendar.get( Calendar.DAY_OF_MONTH )
+    );
+  }
 
-    long a = (long) ( ( 14 - month ) / 12 );
-    long y = year + 4800 - a;
-    long m = month + 12 * a - 3;
-    double jdn;
+  /**
+   * Returns the Julian Day Number from a Gregorian day. The algorithm is taken from Wikipedia: <a
+   * href="http://en.wikipedia.org/wiki/Julian_day">Julian Day</a>
+   *
+   * @param year  year, e.g. 2000
+   * @param month month number: 1 for Jan, 2 for Feb, etc.
+   * @param day   day of month, starting from 1
+   * @return the Julian day number
+   */
+  private static int computeJdn( int year, int month, int day ) {
+    int a = ( 14 - month ) / 12;
+    int y = year + 4800 - a;
+    int m = month + 12 * a - 3;
+    // since the order number is computed, there's no need to use floating point types
+    int jdn = day + ( 153 * m + 2 ) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
+    return jdn;
+  }
 
-    if ( ( year * 10000 + month * 100 + day ) >= chronologicalJulianDayNumber ) {
-      // if starting from a Gregorian calendar date compute:
-      jdn =
-          day + (long) ( ( 153 * m + 2 ) / 5 ) + 365 * y + (long) ( y / 4 ) - (long) ( y / 100 ) + (long) ( y / 400 )
-              - 32045;
-    } else {
-      // Otherwise, if starting from a Julian calendar date compute:
-      jdn = day + (long) ( ( 153 * m + 2 ) / 5 ) + 365 * y + (long) ( y / 4 ) - 32083;
-    }
-
-    return Math.round( jdn );
+  /**
+   * Returns the difference between <tt>calendar</tt> and Vertica's base date (<tt>Jan 01 2000 00:00:00</tt>) in
+   * milliseconds.
+   *
+   * @param calendar   desired moment of time
+   * @return  the values delta in milliseconds
+   */
+  private static long computeDiffInMillisDisrespectingDst( GregorianCalendar calendar ) {
+    // The goal is to compute the difference between two moments of time
+    // We can use TimeZone.inDaylightTime() or calculate a Julian Day Number
+    // I prefer the second approach
+    int days = computeJdn( calendar ) - BASE_DATE_JDN;
+    int hours = calendar.get( Calendar.HOUR_OF_DAY );
+    int minutes = calendar.get( Calendar.MINUTE );
+    int seconds = calendar.get( Calendar.SECOND );
+    long millis = calendar.get( Calendar.MILLISECOND );
+    return DAYS.toMillis( days ) + HOURS.toMillis( hours ) + MINUTES.toMillis( minutes ) + SECONDS.toMillis( seconds )
+      + millis;
   }
 
   /**
