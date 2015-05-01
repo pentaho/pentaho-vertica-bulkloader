@@ -51,7 +51,7 @@ import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.w3c.dom.Node;
 
-@Step( id = "VerticaBulkLoader", image = "ui/images/BulkIn.png",
+@Step( id = "VerticaBulkLoader", image = "vertica.svg",
     i18nPackageName = "plugin.com.vertica.kettle.bulkloader", name = "VerticaBulkLoaderMeta.TypeLongDesc",
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
     categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk" )
