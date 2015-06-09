@@ -17,6 +17,8 @@
 
 package org.pentaho.di.verticabulkload;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +28,7 @@ import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Counter;
 import org.pentaho.di.core.DBCache;
 import org.pentaho.di.core.ProvidesDatabaseConnectionInformation;
+import org.pentaho.di.core.ProvidesModelerMeta;
 import org.pentaho.di.core.SQLStatement;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.Database;
@@ -33,6 +36,7 @@ import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleXMLException;
+import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.variables.VariableSpace;
@@ -55,8 +59,7 @@ import org.w3c.dom.Node;
     i18nPackageName = "plugin.com.vertica.kettle.bulkloader", name = "VerticaBulkLoaderMeta.TypeLongDesc",
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
     categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk" )
-public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface,
-    ProvidesDatabaseConnectionInformation {
+public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface, ProvidesModelerMeta {
   private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
   private DatabaseMeta databaseMeta;
@@ -721,4 +724,21 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
     return null;
   }
 
+  @Override public RowMeta getRowMeta( StepDataInterface stepData ) {
+    return (RowMeta) ( (VerticaBulkLoaderData) stepData ).getInsertRowMeta();
+  }
+
+  @Override public List<String> getDatabaseFields() {
+    if ( specifyFields() ) {
+      return Arrays.asList( getFieldDatabase() );
+    }
+    return Collections.emptyList();
+  }
+
+  @Override public List<String> getStreamFields() {
+    if ( specifyFields() ) {
+      return Arrays.asList( getFieldStream() );
+    }
+    return Collections.emptyList();
+  }
 }
