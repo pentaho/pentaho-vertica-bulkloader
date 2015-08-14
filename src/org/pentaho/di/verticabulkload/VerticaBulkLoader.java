@@ -142,6 +142,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
       try {
         data.pipedInputStream = new PipedInputStream();
+        if( data.colSpecs == null || data.colSpecs.isEmpty() ) {
+          return false;
+        }
         data.encoder = new StreamEncoder( data.colSpecs, data.pipedInputStream );
 
         initializeWorker();
