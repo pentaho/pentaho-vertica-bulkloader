@@ -177,6 +177,12 @@
 	      <fileset dir="${package.resdir}" excludes=".gitignore"/>
 	    </copy>
 	    <chmod perm="a+x" dir="${stage.dir}" includes="**/*.sh" />
+		<if>
+			<available file="bin/stage/${ivy.artifact.id}/version.xml" />
+			<then>
+				<replace file="bin/stage/${ivy.artifact.id}/version.xml" token="@TRUNK@" value="${project.revision}" />
+			</then>
+		</if>
 	  </target>
 
 </project>
