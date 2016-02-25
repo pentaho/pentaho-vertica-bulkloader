@@ -58,7 +58,8 @@ import org.w3c.dom.Node;
 @Step( id = "VerticaBulkLoader", image = "vertica.svg",
     i18nPackageName = "plugin.com.vertica.kettle.bulkloader", name = "VerticaBulkLoaderMeta.TypeLongDesc",
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
-    categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk" )
+    categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk",
+    documentationUrl = "http://wiki.pentaho.com/display/EAI/Vertica+Bulk+Loader" )
 public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface, ProvidesModelerMeta {
   private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
