@@ -36,6 +36,8 @@ import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleXMLException;
+import org.pentaho.di.core.injection.Injection;
+import org.pentaho.di.core.injection.InjectionSupported;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
@@ -60,28 +62,50 @@ import org.w3c.dom.Node;
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
     categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk",
     documentationUrl = "http://wiki.pentaho.com/display/EAI/Vertica+Bulk+Loader" )
+
+@InjectionSupported( localizationPrefix = "VerticaBulkLoader.Injection.", groups = { "FIELDS", "MAIN_OPTIONS", "DATABASE_FIELDS" } )
 public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface, ProvidesModelerMeta {
   private static Class<?> PKG = VerticaBulkLoaderMeta.class; // for i18n purposes, needed by Translator2!!
 
   private DatabaseMeta databaseMeta;
+  private List<? extends SharedObjectInterface> databases;
+  
+  @Injection( name = "SCHEMANAME", group = "FIELDS" )
   private String schemaName;
+  
+  @Injection( name = "TABLENAME", group = "FIELDS" )
   private String tablename;
 
+  @Injection( name = "DIRECT", group = "MAIN_OPTIONS" )
   private boolean direct = true;
+  
+  @Injection( name = "ABORTONERROR", group = "MAIN_OPTIONS" )
   private boolean abortOnError = true;
 
+  @Injection( name = "EXCEPTIONSFILENAME", group = "MAIN_OPTIONS" )
   private String exceptionsFileName;
+  
+  @Injection( name = "REJECTEDDATAFILENAME", group = "MAIN_OPTIONS" )
   private String rejectedDataFileName;
+  
+  @Injection( name = "STREAMNAME", group = "MAIN_OPTIONS" )
   private String streamName;
 
   /** Do we explicitly select the fields to update in the database */
   private boolean specifyFields;
 
+  @Injection( name = "FIELDSTREAM", group = "DATABASE_FIELDS" )
   /** Fields containing the values in the input stream to insert */
   private String[] fieldStream;
 
+  @Injection( name = "FIELDDATABASE", group = "DATABASE_FIELDS" )
   /** Fields in the table to insert */
   private String[] fieldDatabase;
+  
+  @Injection( name = "CONNECTIONNAME" )
+  public void setConnection( String connectionName ) {
+    databaseMeta = DatabaseMeta.findDatabase( databases, connectionName );
+  }
 
   public VerticaBulkLoaderMeta() {
     super(); // allocate BaseStepMeta
@@ -218,6 +242,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 
   private void readData( Node stepnode, List<? extends SharedObjectInterface> databases ) throws KettleXMLException {
     try {
+      this.databases = databases;
       String con = XMLHandler.getTagValue( stepnode, "connection" );
       databaseMeta = DatabaseMeta.findDatabase( databases, con );
       schemaName = XMLHandler.getTagValue( stepnode, "schema" );
@@ -287,6 +312,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   public void readRep( Repository rep, ObjectId id_step, List<DatabaseMeta> databases, Map<String, Counter> counters )
     throws KettleException {
     try {
+      this.databases = databases;
       databaseMeta = rep.loadDatabaseMetaFromStepAttribute( id_step, "id_connection", databases );
       schemaName = rep.getStepAttributeString( id_step, "schema" );
       tablename = rep.getStepAttributeString( id_step, "table" );
