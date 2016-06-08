@@ -44,38 +44,38 @@ public class VerticaBulkLoaderMetaInjectionTest extends BaseMetadataInjectionTes
       }
     } );
     check( "DIRECT", new BooleanGetter() {
-      public String get() {
+      public boolean get() {
         return meta.isDirect();
       }
     } );
     check( "ABORTONERROR", new BooleanGetter() {
-      public String get() {
+      public boolean get() {
         return meta.isAbortOnError();
       }
     } );
-    check( "EXCEPTIONSFILENAME", new BooleanGetter() {
+    check( "EXCEPTIONSFILENAME", new StringGetter() {
       public String get() {
-        return meta.isExceptionFileName();
+        return meta.getExceptionsFileName();
       }
     } );
     check( "REJECTEDDATAFILENAME", new StringGetter() {
-        public boolean get() {
+        public String get() {
           return meta.getRejectedDataFileName();
         }
       } );
     check( "STREAMNAME", new StringGetter() {
-        public boolean get() {
+        public String get() {
           return meta.getStreamName();
         }
       } );
     check( "FIELDSTREAM", new StringGetter() {
-        public boolean get() {
-          return meta.getFieldStream()[];
+        public String get() {
+          return meta.getFieldStream()[0];
         }
       } );
     check( "FIELDDATABASE", new StringGetter() {
-        public boolean get() {
-          return meta.getFieldDatabase()[];
+        public String get() {
+          return meta.getFieldDatabase()[0];
         }
       } );
     check( "CONNECTIONNAME", new StringGetter() {
