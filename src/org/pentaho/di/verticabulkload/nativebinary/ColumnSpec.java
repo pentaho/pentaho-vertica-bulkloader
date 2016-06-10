@@ -12,7 +12,7 @@
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU Lesser General Public License for more details.
  *
- * Copyright (c) 2002-2013 Pentaho Corporation..  All rights reserved.
+ * Copyright (c) 2002-2016 Pentaho Corporation..  All rights reserved.
  */
 
 package org.pentaho.di.verticabulkload.nativebinary;
@@ -25,11 +25,10 @@ import java.nio.charset.CharsetEncoder;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.ValueMetaInterface;
-
-import static java.util.concurrent.TimeUnit.*;
 
 public class ColumnSpec {
   private static final byte BYTE_ZERO = (byte) 0;
@@ -152,9 +151,10 @@ public class ColumnSpec {
 
   public void encode( ValueMetaInterface valueMeta, Object value ) throws CharacterCodingException,
     UnsupportedEncodingException, KettleValueException {
-    if ( value == null ) {
+    if ( value == null || valueMeta == null || valueMeta.getNativeDataType( value ) == null ) {
       return;
     }
+
     int prevPosition, length, sizePosition;
     byte[] inputBinary;
     long milliSeconds;
@@ -219,11 +219,11 @@ public class ColumnSpec {
         // zone.
         // We actually use the local time instead of the UTC time because UTC time was giving wrong results.
         calendarLocalTZ.setTime( valueMeta.getDate( value ) );
-        milliSeconds = HOURS.toMillis( calendarLocalTZ.get( Calendar.HOUR_OF_DAY ) ) +
-            MINUTES.toMillis( calendarLocalTZ.get( Calendar.MINUTE ) ) +
-            SECONDS.toMillis( calendarLocalTZ.get( Calendar.SECOND ) ) +
-            calendarLocalTZ.get( Calendar.MILLISECOND );
-        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
+        milliSeconds = TimeUnit.HOURS.toMillis( calendarLocalTZ.get( Calendar.HOUR_OF_DAY ) )
+            + TimeUnit.MINUTES.toMillis( calendarLocalTZ.get( Calendar.MINUTE ) )
+            + TimeUnit.SECONDS.toMillis( calendarLocalTZ.get( Calendar.SECOND ) )
+            + calendarLocalTZ.get( Calendar.MILLISECOND );
+        this.mainBuffer.putLong( TimeUnit.MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case TIMETZ:
         // HP Vertica Documentation. Software Version: 7.1.x (Document Release Date: 3/31/2015)
@@ -249,26 +249,26 @@ public class ColumnSpec {
         // constant in this case. The latter approach is implemented below
 
         calendarUTC.setTime( valueMeta.getDate( value ) );
-        milliSeconds = HOURS.toMillis( calendarUTC.get( Calendar.HOUR_OF_DAY ) ) +
-            MINUTES.toMillis( calendarUTC.get( Calendar.MINUTE ) ) +
-            SECONDS.toMillis( calendarUTC.get( Calendar.SECOND ) ) +
-            calendarUTC.get( Calendar.MILLISECOND );
+        milliSeconds = TimeUnit.HOURS.toMillis( calendarUTC.get( Calendar.HOUR_OF_DAY ) )
+            + TimeUnit.MINUTES.toMillis( calendarUTC.get( Calendar.MINUTE ) )
+            + TimeUnit.SECONDS.toMillis( calendarUTC.get( Calendar.SECOND ) )
+            + calendarUTC.get( Calendar.MILLISECOND );
         final long utcOffsetInSeconds = 24 * 3600;
-        this.mainBuffer.putLong( ( ( MILLISECONDS.toMicros( milliSeconds ) ) << 24 ) + utcOffsetInSeconds );
+        this.mainBuffer.putLong( ( ( TimeUnit.MILLISECONDS.toMicros( milliSeconds ) ) << 24 ) + utcOffsetInSeconds );
         break;
       case TIMESTAMP:
         // 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000
         // 00:00:00.
         calendarLocalTZ.setTime( valueMeta.getDate( value ) );
         milliSeconds = computeDiffInMillisDisrespectingDst( calendarLocalTZ );
-        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
+        this.mainBuffer.putLong( TimeUnit.MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case TIMESTAMPTZ:
         // A 64-bit integer in little-endian format containing the number of microseconds since Julian day: Jan 01 2000
         // 00:00:00 in the UTC timezone.
         calendarUTC.setTime( valueMeta.getDate( value ) );
         milliSeconds = calendarUTC.getTimeInMillis() - BASE_DATE_UTC_MILLIS;
-        this.mainBuffer.putLong( MILLISECONDS.toMicros( milliSeconds ) );
+        this.mainBuffer.putLong( TimeUnit.MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case VARBINARY:
         sizePosition = this.mainBuffer.position();
@@ -350,8 +350,8 @@ public class ColumnSpec {
     int minutes = calendar.get( Calendar.MINUTE );
     int seconds = calendar.get( Calendar.SECOND );
     long millis = calendar.get( Calendar.MILLISECOND );
-    return DAYS.toMillis( days ) + HOURS.toMillis( hours ) + MINUTES.toMillis( minutes ) + SECONDS.toMillis( seconds )
-      + millis;
+    return TimeUnit.DAYS.toMillis( days ) + TimeUnit.HOURS.toMillis( hours ) + TimeUnit.MINUTES.toMillis( minutes )
+      + TimeUnit.SECONDS.toMillis( seconds ) + millis;
   }
 
   /**

@@ -2,7 +2,7 @@
  *
  * Pentaho Data Integration
  *
- * Copyright (C) 2002-2015 by Pentaho : http://www.pentaho.com
+ * Copyright (C) 2002-2016 by Pentaho : http://www.pentaho.com
  *
  *******************************************************************************
  *
@@ -22,16 +22,16 @@
 
 package org.pentaho.di.verticabulkload.nativebinary;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.pentaho.di.core.row.value.ValueMetaDate;
+import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
-import static org.junit.Assert.assertEquals;
+import org.junit.Before;
+import org.junit.Test;
+import org.pentaho.di.core.row.value.ValueMetaDate;
 
 /**
  * @author Andrey Khayrutdinov
@@ -69,6 +69,18 @@ public class ColumnSpecDateEncodingTest {
     // SELECT DATEDIFF('day', TO_DATE('2000-01-01','YYYY-MM-DD'), TO_DATE('1990-02-28','YYYY-MM-DD'))
     // -> -3594
     assertEncodesProperly( "1990-02-28", -3594 );
+  }
+
+  @Test
+  public void testNullInput() throws Exception {
+    spec.encode( null, "" );
+    buffer.flip();
+    assertEquals( 0, buffer.position() );
+
+    buffer.clear();
+    spec.encode( new ValueMetaDate(), null );
+    buffer.flip();
+    assertEquals( 0, buffer.position() );
   }
 
   private void assertEncodesProperly( String dt, long expectedValue ) throws Exception {
