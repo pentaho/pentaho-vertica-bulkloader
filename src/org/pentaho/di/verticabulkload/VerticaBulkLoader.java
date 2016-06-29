@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2013 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2016 Pentaho Corporation..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
@@ -298,16 +298,18 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         sb.append( ", " );
       }
       ColumnType columnType = data.colSpecs.get( i ).type;
+      ValueMetaInterface valueMeta = fields.getValueMeta( i );
       switch ( columnType ) {
         case NUMERIC:
           sb.append( "TMPFILLERCOL" ).append( i ).append( " FILLER VARCHAR(1000), " );
           // Force columns to be quoted:
-          sb.append( databaseMeta.getStartQuote() + fields.getValueMeta( i ).getName() + databaseMeta.getEndQuote() );
-          sb.append( " as TO_NUMBER(" ).append( "TMPFILLERCOL" ).append( i ).append( ")" );
+          sb.append( databaseMeta.getStartQuote() + valueMeta.getName() + databaseMeta.getEndQuote() );
+          sb.append( " AS CAST(" ).append( "TMPFILLERCOL" ).append( i ).append( " AS NUMERIC" );
+          sb.append( ")" );
           break;
         default:
           // Force columns to be quoted:
-          sb.append( databaseMeta.getStartQuote() + fields.getValueMeta( i ).getName() + databaseMeta.getEndQuote() );
+          sb.append( databaseMeta.getStartQuote() + valueMeta.getName() + databaseMeta.getEndQuote() );
           break;
       }
     }
