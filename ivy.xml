@@ -22,7 +22,8 @@
         <dependency org="pentaho-kettle" name="kettle-ui-swt"     rev="${dependency.kettle.revision}" changing="true" conf="provided->default"/>        
 
         <!--  Testing dependencies -->
-        <dependency org="junit"          name="junit"          rev="4.4" conf="test->default" />
-		<dependency org="org.mockito"              name="mockito-all"          rev="1.9.5"  transitive="false" conf="test->default"/>
+        <dependency org="pentaho-kettle" name="kettle-engine-test" rev="${dependency.kettle.revision}" changing="true" conf="test->default"/>
+        <dependency org="junit"          name="junit"              rev="4.4" conf="test->default" />
+        <dependency org="org.mockito"    name="mockito-all"        rev="1.9.5" transitive="false" conf="test->default"/>
     </dependencies>
 </ivy-module>
