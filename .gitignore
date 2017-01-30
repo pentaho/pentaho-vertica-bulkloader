@@ -1,3 +1,4 @@
-/classes/
-/lib-provided/
-/test-lib/
+.idea/
+*.iml
+target/
+
