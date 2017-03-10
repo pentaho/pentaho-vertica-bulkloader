@@ -187,7 +187,7 @@ public class StreamEncoder {
   // This plugin does not seem to exploit any special byte buffer size alignments or clever
   // things for performance reasons, so flushing cache earlier is very safe.
   private void checkAndFlushBuffer() throws IOException {
-    if ( buffer.position() + (2*rowMaxSize) > buffer.capacity() ) {
+    if ( buffer.position() + ( 2 * rowMaxSize ) > buffer.capacity() ) {
       flushBuffer();
     }
   }
