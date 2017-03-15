@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2016 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
@@ -22,8 +22,10 @@ import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executors;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
@@ -145,7 +147,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         if ( data.colSpecs == null || data.colSpecs.isEmpty() ) {
           return false;
         }
-        data.encoder = new StreamEncoder( data.colSpecs, data.pipedInputStream );
+        data.encoder = createStreamEncoder( data.colSpecs, data.pipedInputStream );
 
         initializeWorker();
         data.encoder.writeHeader();
@@ -249,7 +251,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       return new ColumnSpec( ColumnSpec.PrecisionScaleWidthType.NUMERIC, targetValueMeta.getLength(), targetValueMeta
           .getPrecision() );
     }
-    throw new IllegalArgumentException( "Column type " + targetColumnTypeName + " not supported." ); //$NON-NLS-1$ 
+    throw new IllegalArgumentException( "Column type " + targetColumnTypeName + " not supported." ); //$NON-NLS-1$
   }
 
   private void initializeWorker() {
@@ -259,7 +261,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       @Override
       public void run() {
         try {
-          VerticaCopyStream stream = new VerticaCopyStream( (VerticaConnection) ( data.db.getConnection() ), dml );
+          VerticaCopyStream stream = createVerticaCopyStream( dml );
           stream.start();
           stream.addStream( data.pipedInputStream );
           setLinesRejected( stream.getRejects().size() );
@@ -465,5 +467,15 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       data.db.disconnect();
     }
     super.dispose( smi, sdi );
+  }
+
+  @VisibleForTesting
+  StreamEncoder createStreamEncoder( List<ColumnSpec> colSpecs, PipedInputStream pipedInputStream ) throws IOException {
+    return new StreamEncoder( colSpecs, pipedInputStream );
+  }
+
+  @VisibleForTesting
+  VerticaCopyStream createVerticaCopyStream( String dml ) throws SQLException {
+    return new VerticaCopyStream( (VerticaConnection) ( data.db.getConnection() ), dml );
   }
 }
