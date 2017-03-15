@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2014 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload.nativebinary;
@@ -35,6 +35,11 @@ import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 
 public class StreamEncoder {
+
+  // public for test purposes
+  // TODO: maybe this needs to be a configurable setting, but I don't know how important it is.
+  public static final int NUM_ROWS_TO_BUFFER = 500;
+
   private static final byte BYTE_ZERO = (byte) 0;
   private static final byte BYTE_FULL = (byte) 0xFF;
   private static final byte BYTE_LF = (byte) 0x0A;
@@ -42,20 +47,17 @@ public class StreamEncoder {
 
   private static final int MAX_CHAR_LENGTH = 65000;
 
-  // TODO: maybe this needs to be a configurable setting, but I don't know how important it is.
-  private static final int NUM_ROWS_TO_BUFFER = 500;
   private static final int MAXIMUM_BUFFER_SIZE = Integer.MAX_VALUE - 8;
+
+  protected WritableByteChannel channel;
+  private PipedOutputStream pipedOutputStream;
 
   private int columnCount;
   private int rowMaxSize;
-  private int rowHeaderSize;
 
   private ByteBuffer buffer;
 
   private Charset charset;
-
-  PipedOutputStream pipedOutputStream;
-  WritableByteChannel channel;
 
   private final List<ColumnSpec> columns;
   private final BitSet rowNulls;
@@ -77,14 +79,17 @@ public class StreamEncoder {
     this.pipedOutputStream = new PipedOutputStream( inputStream );
     this.channel = Channels.newChannel( pipedOutputStream );
 
-    this.rowHeaderSize = 4 + this.rowNulls.numBytes();
-    this.rowMaxSize = this.rowHeaderSize;
+    this.rowMaxSize = 4 + this.rowNulls.numBytes();
 
     for ( ColumnSpec column : columns ) {
       switch ( column.type ) {
+        case VARBINARY:
+          this.rowMaxSize += 4; // consider data size bytes for variable length field
+          break;
+        case VARCHAR:
+          this.rowMaxSize += 4; // consider data size bytes for variable length field
         case NUMERIC:
         case CHAR:
-        case VARCHAR:
           column.setCharBuffer( charBuffer );
           column.setCharEncoder( charEncoder );
           break;
