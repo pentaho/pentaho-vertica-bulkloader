@@ -2,7 +2,7 @@
  *
  * Pentaho Data Integration
  *
- * Copyright (C) 2002-2014 by Pentaho : http://www.pentaho.com
+ * Copyright (C) 2002-2017 by Pentaho : http://www.pentaho.com
  *
  *******************************************************************************
  *
@@ -21,20 +21,14 @@
  ******************************************************************************/
 package org.pentaho.di.verticabulkload.nativebinary;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
 import java.io.PipedInputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
 
 /**
  * @author Tatsiana_Kasiankova
@@ -43,14 +37,13 @@ import static org.mockito.Mockito.when;
 public class StreamEncoderTest {
 
   private static final int NUM_ROWS_TO_BUFFER = 500;
-  private static final int MAX_ROW_SIZE = Math.round( Integer.MAX_VALUE / NUM_ROWS_TO_BUFFER );
   private static final int MAXIMUM_BUFFER_SIZE = Integer.MAX_VALUE - 8;
-  PipedInputStream inputStream = mock( PipedInputStream.class );
-  static List<ColumnSpec> columns;
+  private PipedInputStream inputStream = Mockito.mock( PipedInputStream.class );
+  private List<ColumnSpec> columns;
 
   @Before
   public void setUp() {
-    columns = new ArrayList<ColumnSpec>();
+    columns = new ArrayList<>();
   }
 
   @Test
@@ -60,9 +53,15 @@ public class StreamEncoderTest {
     columns.add( cs );
     try {
       StreamEncoder stEncoder = new StreamEncoder( columns, inputStream );
-      assertEquals( getExpectedBufferSize( maxTypeLenght ), stEncoder.getBuffer().capacity() );
+
+      long expectedBufferSize = getExpectedBufferSize( maxTypeLenght, columns.size() );
+
+      // adding bytes for data size, since it is a varchar field
+      expectedBufferSize += columns.size() * 4 * maxTypeLenght;
+
+      Assert.assertEquals( expectedBufferSize, stEncoder.getBuffer().capacity() );
     } catch ( Exception e ) {
-      fail( "There is not expected exception expected But was: " + e );
+      Assert.fail( "There is not expected exception expected But was: " + e );
     }
   }
 
@@ -70,23 +69,23 @@ public class StreamEncoderTest {
   public void testCountedBufferSizeIsInt_WhenToBufferAllRowMaxSizeRequiresMoreThenInt() throws Exception {
 
     try {
-      assertEquals( MAXIMUM_BUFFER_SIZE, getSpyStreamEncoder().countMainByteBufferSize() );
+      Assert.assertEquals( MAXIMUM_BUFFER_SIZE, getSpyStreamEncoder().countMainByteBufferSize() );
     } catch ( Exception e ) {
-      fail( "There is no exception expected But was: " + e );
+      Assert.fail( "There is no exception expected But was: " + e );
     }
   }
 
-  private static long getExpectedBufferSize( int maxTypeLenght ) {
-    return getRowMaxSize( maxTypeLenght ) * (long) NUM_ROWS_TO_BUFFER;
+  private static long getExpectedBufferSize( int maxTypeLenght, int columnCount ) {
+    return getRowMaxSize( maxTypeLenght, columnCount ) * (long) NUM_ROWS_TO_BUFFER;
   }
 
-  private static int getRowMaxSize( int maxTypeLenght ) {
-    return getRowHeaderSize( columns.size() ) + getAllColumnsMaxSize( maxTypeLenght );
+  private static int getRowMaxSize( int maxTypeLenght, int columnCount ) {
+    return getRowHeaderSize( columnCount ) + getAllColumnsMaxSize( maxTypeLenght, columnCount );
 
   }
 
-  private static int getAllColumnsMaxSize( int maxTypeLenght ) {
-    return maxTypeLenght * columns.size();
+  private static int getAllColumnsMaxSize( int maxTypeLenght, int columnCount ) {
+    return maxTypeLenght * columnCount;
 
   }
 
@@ -102,12 +101,12 @@ public class StreamEncoderTest {
   private static StreamEncoder getSpyStreamEncoder() throws Exception {
     int maxTypeLenght = 500;
     ColumnSpec cs = new ColumnSpec( ColumnSpec.VariableWidthType.VARCHAR, maxTypeLenght );
-    List<ColumnSpec> columns = new ArrayList<ColumnSpec>();
+    List<ColumnSpec> columns = new ArrayList<>();
     columns.add( cs );
-    PipedInputStream inputStream = mock( PipedInputStream.class );
+    PipedInputStream inputStream = Mockito.mock( PipedInputStream.class );
     StreamEncoder stEncoder = new StreamEncoder( columns, inputStream );
-    StreamEncoder stEncoderSpy = spy( stEncoder );
-    when( stEncoderSpy.getRowMaxSize() ).thenReturn( Integer.MAX_VALUE + 25 );
+    StreamEncoder stEncoderSpy = Mockito.spy( stEncoder );
+    Mockito.when( stEncoderSpy.getRowMaxSize() ).thenReturn( Integer.MAX_VALUE + 25 );
     return stEncoderSpy;
   }
 

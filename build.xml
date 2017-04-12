@@ -97,6 +97,9 @@
 	    <fileset dir="${lib.provided.dir}">
 	      <include name="**/*.jar" />
 	    </fileset>
+        <fileset dir="${libext.dir}">
+		  <include name="**/*.jar" />
+        </fileset>
 	    <fileset dir="${testlib.dir}">
 	      <include name="**/*.jar" />
 	    </fileset>
