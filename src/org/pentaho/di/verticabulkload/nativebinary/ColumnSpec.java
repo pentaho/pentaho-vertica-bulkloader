@@ -134,7 +134,8 @@ public class ColumnSpec {
     this.type = variableWidthType.type;
     this.bytes = variableWidthType.bytes;
     this.scale = 0;
-    this.maxLength = maxlenght;
+    // PDI-16250: Varchars are written to the buffer with 4 additional bytes that specify the size of the value
+    this.maxLength = maxlenght + ConstantWidthType.INTEGER_32.bytes;
   }
 
   public void setCharBuffer( CharBuffer charBuffer ) {
