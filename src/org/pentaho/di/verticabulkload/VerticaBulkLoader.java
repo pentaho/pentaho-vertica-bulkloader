@@ -20,10 +20,13 @@ package org.pentaho.di.verticabulkload;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
+
+import javax.sql.PooledConnection;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
@@ -271,7 +274,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
             logMinimal( String.format( "%d records loaded out of %d records sent.", rowsLoaded, getLinesOutput() ) );
           }
           data.db.disconnect();
-        } catch ( SQLException e ) {
+        } catch ( SQLException | IllegalStateException e ) {
           if ( e.getCause() instanceof InterruptedIOException ) {
             logBasic( "SQL statement interrupted by halt of transformation" );
           } else {
@@ -476,6 +479,20 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   @VisibleForTesting
   VerticaCopyStream createVerticaCopyStream( String dml ) throws SQLException {
-    return new VerticaCopyStream( (VerticaConnection) ( data.db.getConnection() ), dml );
+    return new VerticaCopyStream( getVerticaConnection(), dml );
+  }
+  
+  private VerticaConnection getVerticaConnection() throws SQLException {
+    Connection conn = data.db.getConnection();
+    if ( conn instanceof VerticaConnection ) {
+      return (VerticaConnection) conn;
+    } else if ( conn instanceof PooledConnection ) {
+      PooledConnection pooledConn = (PooledConnection) conn;
+      Connection underlyingConn = pooledConn.getConnection();
+      if ( underlyingConn instanceof VerticaConnection ) {
+        return (VerticaConnection) underlyingConn;
+      }
+    }
+    throw new IllegalStateException( "Could not retrieve a VerticaConnection from " + conn.getClass() );
   }
 }
