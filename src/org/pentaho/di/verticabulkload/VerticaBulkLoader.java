@@ -481,7 +481,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   VerticaCopyStream createVerticaCopyStream( String dml ) throws SQLException {
     return new VerticaCopyStream( getVerticaConnection(), dml );
   }
-  
+
   private VerticaConnection getVerticaConnection() throws SQLException {
     Connection conn = data.db.getConnection();
     if ( conn instanceof VerticaConnection ) {
