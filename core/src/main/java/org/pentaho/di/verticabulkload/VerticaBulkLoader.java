@@ -20,6 +20,7 @@ package org.pentaho.di.verticabulkload;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +47,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
 
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
+import org.apache.commons.dbcp.DelegatingConnection;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnType;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
@@ -94,7 +96,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         data.insertRowMeta = getInputRowMeta().clone();
         data.selectedRowFieldIndices = new int[data.insertRowMeta.size()];
 
-        data.colSpecs = new ArrayList<ColumnSpec>( data.insertRowMeta.size() );
+        data.colSpecs = new ArrayList<>( data.insertRowMeta.size() );
 
         for ( int insertFieldIdx = 0; insertFieldIdx < data.insertRowMeta.size(); insertFieldIdx++ ) {
           data.selectedRowFieldIndices[insertFieldIdx] = insertFieldIdx;
@@ -111,7 +113,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
         int numberOfInsertFields = meta.getFieldDatabase().length;
         data.insertRowMeta = new RowMeta();
-        data.colSpecs = new ArrayList<ColumnSpec>( numberOfInsertFields );
+        data.colSpecs = new ArrayList<>( numberOfInsertFields );
 
         // Cache the position of the selected fields in the row array
         data.selectedRowFieldIndices = new int[numberOfInsertFields];
@@ -129,7 +131,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
           ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta( inputFieldIdx );
           if ( inputValueMeta == null ) {
             throw new KettleStepException( BaseMessages.getString( PKG,
-                "VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[insertFieldIdx] ) ); //$NON-NLS-1$ 
+                "VerticaBulkLoader.Exception.FailedToFindField", meta.getFieldStream()[insertFieldIdx] ) ); //$NON-NLS-1$
           }
           ValueMetaInterface insertValueMeta = inputValueMeta.clone();
           insertValueMeta.setName( insertFieldName );
@@ -271,7 +273,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
             logMinimal( String.format( "%d records loaded out of %d records sent.", rowsLoaded, getLinesOutput() ) );
           }
           data.db.disconnect();
-        } catch ( SQLException e ) {
+        } catch ( SQLException | IllegalStateException e ) {
           if ( e.getCause() instanceof InterruptedIOException ) {
             logBasic( "SQL statement interrupted by halt of transformation" );
           } else {
@@ -476,6 +478,26 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   @VisibleForTesting
   VerticaCopyStream createVerticaCopyStream( String dml ) throws SQLException {
-    return new VerticaCopyStream( (VerticaConnection) ( data.db.getConnection() ), dml );
+    return new VerticaCopyStream( getVerticaConnection(), dml );
   }
+
+  @VisibleForTesting
+  VerticaConnection getVerticaConnection() throws SQLException {
+    Connection conn = data.db.getConnection();
+    if ( conn != null ) {
+      if ( conn instanceof VerticaConnection ) {
+        return (VerticaConnection) conn;
+      } else if ( conn instanceof DelegatingConnection ) {
+        DelegatingConnection pooledConn = (DelegatingConnection) conn;
+        Connection underlyingConn = pooledConn.getInnermostDelegate();
+        if ( underlyingConn instanceof VerticaConnection ) {
+          return (VerticaConnection) underlyingConn;
+        }
+      }
+      throw new IllegalStateException( "Could not retrieve a VerticaConnection from " + conn.getClass().getName() );
+    } else {
+      throw new IllegalStateException( "Could not retrieve a VerticaConnection from null" );
+    }
+  }
+
 }
