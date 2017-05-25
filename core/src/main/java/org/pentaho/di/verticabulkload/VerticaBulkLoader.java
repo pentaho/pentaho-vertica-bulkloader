@@ -25,6 +25,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
+import javax.sql.PooledConnection;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
@@ -487,10 +488,16 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     if ( conn != null ) {
       if ( conn instanceof VerticaConnection ) {
         return (VerticaConnection) conn;
-      } else if ( conn instanceof DelegatingConnection ) {
-        DelegatingConnection pooledConn = (DelegatingConnection) conn;
-        Connection underlyingConn = pooledConn.getInnermostDelegate();
-        if ( underlyingConn instanceof VerticaConnection ) {
+      } else {
+        Connection underlyingConn = null;
+        if ( conn instanceof DelegatingConnection ) {
+          DelegatingConnection pooledConn = (DelegatingConnection) conn;
+          underlyingConn = pooledConn.getInnermostDelegate();
+        } else if ( conn instanceof javax.sql.PooledConnection ) {
+          PooledConnection pooledConn = (PooledConnection) conn;
+          underlyingConn = pooledConn.getConnection();
+        }
+        if ( ( underlyingConn != null ) && ( underlyingConn instanceof VerticaConnection ) ) {
           return (VerticaConnection) underlyingConn;
         }
       }
