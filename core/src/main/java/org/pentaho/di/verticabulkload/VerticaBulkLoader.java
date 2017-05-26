@@ -496,6 +496,17 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         } else if ( conn instanceof javax.sql.PooledConnection ) {
           PooledConnection pooledConn = (PooledConnection) conn;
           underlyingConn = pooledConn.getConnection();
+        } else {
+          // Last resort - attempt to use unwrap to get at the connection.
+          try {
+            if ( conn.isWrapperFor( VerticaConnection.class ) ) {
+              VerticaConnection vc = conn.unwrap( VerticaConnection.class );
+              return vc;
+            }
+          } catch ( SQLException Ignored ) {
+            // Ignored - the connection doesn't support unwrap or the connection cannot be
+            // unwrapped into a VerticaConnection.
+          }
         }
         if ( ( underlyingConn != null ) && ( underlyingConn instanceof VerticaConnection ) ) {
           return (VerticaConnection) underlyingConn;
