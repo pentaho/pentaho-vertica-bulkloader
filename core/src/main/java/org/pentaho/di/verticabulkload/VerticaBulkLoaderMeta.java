@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2013 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
@@ -68,25 +68,25 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
 
   private DatabaseMeta databaseMeta;
   private List<? extends SharedObjectInterface> databases;
-  
+
   @Injection( name = "SCHEMANAME", group = "FIELDS" )
   private String schemaName;
-  
+
   @Injection( name = "TABLENAME", group = "FIELDS" )
   private String tablename;
 
   @Injection( name = "DIRECT", group = "MAIN_OPTIONS" )
   private boolean direct = true;
-  
+
   @Injection( name = "ABORTONERROR", group = "MAIN_OPTIONS" )
   private boolean abortOnError = true;
 
   @Injection( name = "EXCEPTIONSFILENAME", group = "MAIN_OPTIONS" )
   private String exceptionsFileName;
-  
+
   @Injection( name = "REJECTEDDATAFILENAME", group = "MAIN_OPTIONS" )
   private String rejectedDataFileName;
-  
+
   @Injection( name = "STREAMNAME", group = "MAIN_OPTIONS" )
   private String streamName;
 
@@ -100,7 +100,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   @Injection( name = "FIELDDATABASE", group = "DATABASE_FIELDS" )
   /** Fields in the table to insert */
   private String[] fieldDatabase;
-  
+
   @Injection( name = "CONNECTIONNAME" )
   public void setConnection( String connectionName ) {
     databaseMeta = DatabaseMeta.findDatabase( databases, connectionName );
@@ -159,7 +159,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   }
 
   /**
-   * @deprecated use {@link #getTableName()} 
+   * @deprecated use {@link #getTableName()}
    */
   public String getTablename() {
     return getTableName();

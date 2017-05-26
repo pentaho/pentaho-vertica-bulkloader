@@ -17,8 +17,9 @@
 
 package org.pentaho.di.verticabulkload;
 
+import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
-import junit.framework.Assert;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -36,11 +37,13 @@ import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
+import org.apache.commons.dbcp.DelegatingConnection;
 
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.nio.BufferOverflowException;
 import java.nio.channels.WritableByteChannel;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -51,6 +54,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
+import static org.junit.Assert.assertTrue;
+
 
 /**
  * Unit test for {@link VerticaBulkLoader}.
@@ -88,9 +93,52 @@ public class VerticaBulkLoaderTest {
         loaderMeta.setDatabaseMeta( mock( DatabaseMeta.class ) );
 
         loader = spy( new VerticaBulkLoader( stepMeta, loaderData, 1, transMeta, trans ) );
+        loader.init( loaderMeta, loaderData );
 
         doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
     }
+
+    /**
+     * This tests the getConnection call with different circumstances
+     * - First, with a regular VerticaConnection
+     * - Next, with a DelegatingConnection (from DBCP) with a VerticaConnection as the innermostDelegate
+     * - Next, with a DelegatingConnection with a java.sql.Connection mock
+     * - Finally, with a java.sql.Connection mock
+     * @throws Exception
+     */
+    @Test
+    public void testGetConnection() throws Exception {
+      Connection connection1 = mock( VerticaConnection.class );
+      DelegatingConnection connection2 = mock( DelegatingConnection.class );
+      when( connection2.getInnermostDelegate() ).thenReturn( connection1 );
+      DelegatingConnection connection3 = mock( DelegatingConnection.class );
+      when( connection3.getInnermostDelegate() ).thenReturn( mock( java.sql.Connection.class ) );
+      Connection connection4 = mock( java.sql.Connection.class );
+
+      loaderData.db.setConnection( connection1 );
+      Connection rtn = loader.getVerticaConnection();
+      assertTrue( connection1 == rtn ); // Should just return the object in loaderData.db
+      loaderData.db.setConnection(  connection2 );
+      rtn = loader.getVerticaConnection();
+      assertTrue( connection1 == rtn ); // Should return the innermost delegate. If it didn't, throw exception
+      loaderData.db.setConnection( connection3 );
+      try {
+        rtn = loader.getVerticaConnection();
+        Assert.fail( "Expected IllegalStateException" );
+      } catch ( IllegalStateException expected ) {
+
+      }
+
+      loaderData.db.setConnection( connection4 );
+      try {
+        rtn = loader.getVerticaConnection();
+        Assert.fail( "Expected IllegalStateException" );
+      } catch ( IllegalStateException expected ) {
+
+      }
+
+    }
+
 
     /**
      * Testing boundary condition of buffer size handling.
