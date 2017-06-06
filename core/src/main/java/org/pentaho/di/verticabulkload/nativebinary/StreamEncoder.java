@@ -185,8 +185,14 @@ public class StreamEncoder {
     pipedOutputStream.close();
   }
 
+  // There is a potential problem with the way rowMaxSize is being calculated
+  // The junit countMainByteBufferSize() function on 111 and the writeHeader() function
+  // appear to assume different things about the size.  (2*rowMaxSize) takes a conservative
+  // approach to flushing the buffer before it overflows near the boundary (buffer.capacity)
+  // This plugin does not seem to exploit any special byte buffer size alignments or clever
+  // things for performance reasons, so flushing cache earlier is very safe.
   private void checkAndFlushBuffer() throws IOException {
-    if ( buffer.position() + rowMaxSize > buffer.capacity() ) {
+    if ( buffer.position() + ( 2 * rowMaxSize ) > buffer.capacity() ) {
       flushBuffer();
     }
   }
