@@ -5,17 +5,13 @@
   <parent>
     <groupId>org.pentaho</groupId>
     <artifactId>pentaho-ce-jar-parent-pom</artifactId>
-    <version>7.1-SNAPSHOT</version>
+    <version>7.1.0.1-34</version>
   </parent>
   <artifactId>vertica-bulkloader</artifactId>
-  <version>7.1-SNAPSHOT</version>
+  <version>7.1.0.1-34</version>
   <packaging>pom</packaging>
   <name>${project.artifactId}</name>
   <description>plugin for performing bulk data loads into a Vertica</description>
-  <modules>
-    <module>core</module>
-    <module>assemblies</module>
-  </modules>
   <licenses>
     <license>
       <name>GNU Lesser General Public License, Version 2.1</name>
@@ -24,12 +20,16 @@
       <comments></comments>
     </license>
   </licenses>
+  <modules>
+    <module>core</module>
+    <module>assemblies</module>
+  </modules>
   <properties>
     <maven-assembly-plugin.version>2.6</maven-assembly-plugin.version>
+    <pentaho-kettle.version>7.1.0.1-34</pentaho-kettle.version>
+    <vertica-jdbc-driver.version>06.00.0000</vertica-jdbc-driver.version>
     <mockito-all.version>1.9.5</mockito-all.version>
     <junit.version>4.4</junit.version>
-    <vertica-jdbc-driver.version>06.00.0000</vertica-jdbc-driver.version>
-    <pentaho-kettle.version>${project.version}</pentaho-kettle.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -45,7 +45,7 @@
         <version>${pentaho-kettle.version}</version>
         <scope>provided</scope>
       </dependency>
-       <dependency>
+      <dependency>
         <groupId>pentaho-kettle</groupId>
         <artifactId>kettle-ui-swt</artifactId>
         <version>${pentaho-kettle.version}</version>
@@ -62,7 +62,7 @@
         <artifactId>kettle-engine-test</artifactId>
         <version>${pentaho-kettle.version}</version>
         <scope>test</scope>
-        </dependency>
+      </dependency>
       <dependency>
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
@@ -83,4 +83,4 @@
       </dependency>
     </dependencies>
   </dependencyManagement>
- </project>
+</project>
