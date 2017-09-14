@@ -35,11 +35,13 @@ import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleXMLException;
+import org.pentaho.di.core.injection.AfterInjection;
 import org.pentaho.di.core.injection.Injection;
 import org.pentaho.di.core.injection.InjectionSupported;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
@@ -767,4 +769,19 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
     }
     return Collections.emptyList();
   }
+
+  /**
+   * If we use injection we can have different arrays lengths.
+   * We need synchronize them for consistency behavior with UI
+   */
+  @AfterInjection
+  public void afterInjectionSynchronization() {
+    int nrFields = ( fieldDatabase == null ) ? -1 : fieldDatabase.length;
+    if ( nrFields <= 0 ) {
+      return;
+    }
+    String[][] rtn = Utils.normalizeArrays( nrFields, fieldStream );
+    fieldStream = rtn[ 0 ];
+  }
+
 }
