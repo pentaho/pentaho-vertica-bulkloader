@@ -32,7 +32,7 @@ public class VerticaBulkLoaderMetaInjectionTest extends BaseMetadataInjectionTes
   }
 
   @Test
-  public void test() throws Exception {
+  public void testInjection() throws Exception {
     check( "SCHEMANAME", new StringGetter() {
       public String get() {
         return meta.getSchemaName();
