@@ -12,13 +12,14 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Hitachi Vantara..  All rights reserved.
+* Copyright (c) 2002-2018 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
 
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -26,7 +27,9 @@ import org.junit.Test;
 import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
-import org.pentaho.di.core.exception.KettlePluginException;
+import org.pentaho.di.core.logging.KettleLogStore;
+import org.pentaho.di.core.logging.LogChannelInterface;
+import org.pentaho.di.core.logging.LogChannelInterfaceFactory;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.plugins.StepPluginType;
 import org.pentaho.di.core.row.RowMeta;
@@ -69,13 +72,23 @@ public class VerticaBulkLoaderTest {
     @BeforeClass
     public static void initEnvironment() throws Exception {
         KettleEnvironment.init();
-    }
 
-    @Before
-    public void setUp() throws KettlePluginException, SQLException {
         PluginRegistry.addPluginType( ValueMetaPluginType.getInstance() );
         PluginRegistry.init( true );
 
+        LogChannelInterfaceFactory logChannelFactory = mock( LogChannelInterfaceFactory.class );
+        LogChannelInterface log = mock( LogChannelInterface.class );
+        when( logChannelFactory.create( any(), any() ) ).thenReturn( log );
+        KettleLogStore.setLogChannelInterfaceFactory( logChannelFactory );
+    }
+
+    @AfterClass
+    public static void tearDownClass() {
+        KettleEnvironment.shutdown();
+    }
+
+    @Before
+    public void setUp() throws SQLException {
         loaderData = new VerticaBulkLoaderData();
         loaderMeta = spy( new VerticaBulkLoaderMeta() );
 
@@ -104,7 +117,6 @@ public class VerticaBulkLoaderTest {
      * - Next, with a DelegatingConnection (from DBCP) with a VerticaConnection as the innermostDelegate
      * - Next, with a DelegatingConnection with a java.sql.Connection mock
      * - Finally, with a java.sql.Connection mock
-     * @throws Exception
      */
     @Test
     public void testGetConnection() throws Exception {
@@ -123,18 +135,18 @@ public class VerticaBulkLoaderTest {
       assertTrue( connection1 == rtn ); // Should return the innermost delegate. If it didn't, throw exception
       loaderData.db.setConnection( connection3 );
       try {
-        rtn = loader.getVerticaConnection();
+        loader.getVerticaConnection();
         Assert.fail( "Expected IllegalStateException" );
       } catch ( IllegalStateException expected ) {
-
+        //
       }
 
       loaderData.db.setConnection( connection4 );
       try {
-        rtn = loader.getVerticaConnection();
+        loader.getVerticaConnection();
         Assert.fail( "Expected IllegalStateException" );
       } catch ( IllegalStateException expected ) {
-
+        //
       }
 
     }
