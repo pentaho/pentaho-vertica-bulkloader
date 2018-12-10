@@ -12,22 +12,15 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Hitachi Vantara..  All rights reserved.
+* Copyright (c) 2002-2018 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
 
-import java.io.IOException;
-import java.io.InterruptedIOException;
-import java.io.PipedInputStream;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executors;
-import javax.sql.PooledConnection;
-
 import com.google.common.annotations.VisibleForTesting;
+import com.vertica.jdbc.VerticaConnection;
+import com.vertica.jdbc.VerticaCopyStream;
+import org.apache.commons.dbcp.DelegatingConnection;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
@@ -45,13 +38,19 @@ import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
-
-import com.vertica.jdbc.VerticaConnection;
-import com.vertica.jdbc.VerticaCopyStream;
-import org.apache.commons.dbcp.DelegatingConnection;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnType;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
+
+import javax.sql.PooledConnection;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.io.PipedInputStream;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executors;
 
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface {
@@ -383,6 +382,13 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     return outputRowData;
   }
 
+  protected void verifyDatabaseConnection() throws KettleException {
+    // Confirming Database Connection is defined.
+    if ( meta.getDatabaseMeta() == null ) {
+      throw new KettleException( BaseMessages.getString( PKG, "VerticaBulkLoaderMeta.Error.NoConnection" ) );
+    }
+  }
+
   @Override
   public boolean init( StepMetaInterface smi, StepDataInterface sdi ) {
     meta = (VerticaBulkLoaderMeta) smi;
@@ -390,6 +396,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
     if ( super.init( smi, sdi ) ) {
       try {
+        // Validating that the connection has been defined.
+        verifyDatabaseConnection();
         data.databaseMeta = meta.getDatabaseMeta();
 
         data.db = new Database( this, meta.getDatabaseMeta() );

@@ -12,14 +12,14 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Hitachi Vantara..  All rights reserved.
+* Copyright (c) 2002-2018 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
 
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
-
+import org.apache.commons.dbcp.DelegatingConnection;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
@@ -39,7 +39,6 @@ import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
-import org.apache.commons.dbcp.DelegatingConnection;
 
 import java.io.IOException;
 import java.io.PipedInputStream;
@@ -49,6 +48,10 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.matchers.JUnitMatchers.containsString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -56,7 +59,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
-import static org.junit.Assert.assertTrue;
 
 /**
  * Unit test for {@link VerticaBulkLoader}.
@@ -102,6 +104,19 @@ public class VerticaBulkLoaderTest {
     loader.init( loaderMeta, loaderData );
 
     doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
+  }
+
+  @Test
+  public void testNoDatabaseConnection() {
+    loaderMeta.setDatabaseMeta( null );
+    // Verify that the initializing will return false due to the connection not being defined.
+    assertFalse( loader.init( loaderMeta, loaderData ) );
+    try {
+      // Verify that the database connection being set to null throws a KettleException with the following message.
+      loader.verifyDatabaseConnection();
+    } catch ( KettleException aKettleException ) {
+      assertThat( aKettleException.getMessage(), containsString( "There is no connection defined in this step" ) );
+    }
   }
 
   /**
