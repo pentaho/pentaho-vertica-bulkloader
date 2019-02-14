@@ -25,7 +25,6 @@
     <module>assemblies</module>
   </modules>
   <properties>
-    <maven-assembly-plugin.version>2.6</maven-assembly-plugin.version>
     <pdi.version>8.3.0.0-SNAPSHOT</pdi.version>
     <vertica-jdbc-driver.version>06.00.0000</vertica-jdbc-driver.version>
     <mockito-all.version>1.9.5</mockito-all.version>
