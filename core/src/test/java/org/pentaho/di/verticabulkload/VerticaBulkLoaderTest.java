@@ -18,7 +18,6 @@
 package org.pentaho.di.verticabulkload;
 
 import com.vertica.jdbc.VerticaCopyStream;
-import junit.framework.Assert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -49,7 +48,11 @@ import java.nio.channels.WritableByteChannel;
 import java.sql.SQLException;
 import java.util.List;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.matchers.JUnitMatchers.containsString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -99,14 +102,14 @@ public class VerticaBulkLoaderTest {
     loaderMeta.setDatabaseMeta( mock( DatabaseMeta.class ) );
 
     loader = spy( new VerticaBulkLoader( stepMeta, loaderData, 1, transMeta, trans ) );
-
+    
     loaderMeta.setExceptionsFileName( tempException.getAbsolutePath() );
     loaderMeta.setRejectedDataFileName( tempRejected.getAbsolutePath() );
     loader.init( loaderMeta, loaderData );
 
     doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
   }
-
+  
   @After
   public void tearDown() {
     if ( tempException != null ) {
@@ -117,14 +120,27 @@ public class VerticaBulkLoaderTest {
     }
   }
 
-    /**
-     * Testing boundary condition of buffer size handling.
-     * <p>
-     *     Given 4 varchar fields of different sizes.
-     *     When loaded data amount is getting close to a buffer size,
-     *     then the buffer should not be overflowed.
-     * </p>
-     */
+  @Test
+  public void testNoDatabaseConnection() {
+    loaderMeta.setDatabaseMeta( null );
+    // Verify that the initializing will return false due to the connection not being defined.
+    assertFalse( loader.init( loaderMeta, loaderData ) );
+    try {
+      // Verify that the database connection being set to null throws a KettleException with the following message.
+      loader.verifyDatabaseConnection();
+    } catch ( KettleException aKettleException ) {
+      assertThat( aKettleException.getMessage(), containsString( "There is no connection defined in this step" ) );
+    }
+  }
+
+  /**
+   * Testing boundary condition of buffer size handling.
+   * <p>
+   *     Given 4 varchar fields of different sizes.
+   *     When loaded data amount is getting close to a buffer size,
+   *     then the buffer should not be overflowed.
+   * </p>
+   */
   @Test
   @SuppressWarnings( "unchecked" )
   public void shouldFlushBufferBeforeItOverflows() throws KettleException, IOException {
@@ -158,13 +174,13 @@ public class VerticaBulkLoaderTest {
         loader.processRow( loaderMeta, loaderData );
       }
     } catch ( BufferOverflowException e ) {
-      Assert.fail( e.getMessage() );
+      fail( e.getMessage() );
     }
 
     // then no BufferOverflowException should be thrown
   }
 
-    /**
+  /**
    * [PDI-17400] Testing the refactored ability of Abort on Error with Vertica. We verify that we handle the data row
    * correctly if the feature is on or off (false if it's on, true if it's off).
    */
@@ -192,16 +208,16 @@ public class VerticaBulkLoaderTest {
         return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
       } ).when( loader ).createStreamEncoder( any(), any() );
       // Verify that the good row returns with a true load value
-      Assert.assertTrue( loader.processRow( loaderMeta, loaderData ) );
+      assertTrue( loader.processRow( loaderMeta, loaderData ) );
 
 
       when( loader.getRow() ).thenReturn( badObjectData );
       loaderMeta.setAbortOnError( true );
 
-      Assert.assertFalse( loader.processRow( loaderMeta, loaderData ) );
+      assertFalse( loader.processRow( loaderMeta, loaderData ) );
 
       loaderMeta.setAbortOnError( false );
-      Assert.assertTrue( loader.processRow( loaderMeta, loaderData ) );
+      assertTrue( loader.processRow( loaderMeta, loaderData ) );
     } catch ( Exception ex ) {
       fail( "No unforeseen exceptions should be thrown" );
     }
@@ -238,9 +254,9 @@ public class VerticaBulkLoaderTest {
       loader.initializeLogFiles();
       loader.writeExceptionRejectionLogs( kettleValueException, rowData );
       BufferedReader exceptReader = new BufferedReader( new FileReader( tempException ) );
-      Assert.assertTrue( exceptReader.lines().anyMatch( streamLine -> streamLine.contains( kettleValueExceptionMsg ) ) );
+      assertTrue( exceptReader.lines().anyMatch( streamLine -> streamLine.contains( kettleValueExceptionMsg ) ) );
       BufferedReader rejectReader = new BufferedReader( new FileReader( tempRejected ) );
-      Assert.assertTrue( rejectReader.lines().anyMatch( streamLine -> streamLine.contains( rowString ) ) );
+      assertTrue( rejectReader.lines().anyMatch( streamLine -> streamLine.contains( rowString ) ) );
       loader.closeLogFiles();
     } catch ( KettleException | IOException nullIssueException ) {
       fail( "Nulling the Exception/Rejection logs should not throw an Exception: " + nullIssueException );
@@ -255,7 +271,7 @@ public class VerticaBulkLoaderTest {
         + " if not, something else is wrong." );
     } catch ( KettleException ex ) {
       // also verify the init method throws a false
-      Assert.assertFalse( loader.init( loaderMeta, loaderData ) );
+      assertFalse( loader.init( loaderMeta, loaderData ) );
     }
 
     loaderMeta.setExceptionsFileName( tempException.getAbsolutePath() );
@@ -266,18 +282,17 @@ public class VerticaBulkLoaderTest {
         + " if not, something else is wrong." );
     } catch ( KettleException ex ) {
       // also verify the init method throws a false
-      Assert.assertFalse( loader.init( loaderMeta, loaderData ) );
+      assertFalse( loader.init( loaderMeta, loaderData ) );
     }
   }
 
   /**
-     * Testing boundary condition of buffer size handling.
-     * <p>
-     *     Given 7 varchar fields of small sizes.
-     *     When loaded data amount is getting close to a buffer size,
-     *     then the buffer should not be overflowed.
-     * </p>
-     */
+   * Testing boundary condition of buffer size handling.
+   * <p>
+   * Given 7 varchar fields of small sizes. When loaded data amount is getting close to a buffer size, then the buffer
+   * should not be overflowed.
+   * </p>
+   */
   @Test
   @SuppressWarnings( "unchecked" )
   public void shouldFlushBufferBeforeItOverflowsOnSmallFieldSizes() throws KettleException, IOException {
@@ -306,8 +321,8 @@ public class VerticaBulkLoaderTest {
     when( loader.getRow() ).thenReturn( new String[] { "1", "1", "1", "1", "1", "1", "1" } );
 
     doAnswer( invocation -> {
-      List colSpecs = (List) invocation.getArguments()[ 0 ];
-      PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[ 1 ];
+      List colSpecs = (List) invocation.getArguments()[0];
+      PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[1];
       return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
     } ).when( loader ).createStreamEncoder( any(), any() );
 
@@ -317,12 +332,12 @@ public class VerticaBulkLoaderTest {
         loader.processRow( loaderMeta, loaderData );
       }
     } catch ( BufferOverflowException e ) {
-      Assert.fail( e.getMessage() );
+      fail( e.getMessage() );
     }
 
     // then no BufferOverflowException should be thrown
   }
-
+  
   private class MockChannelStreamEncoder extends StreamEncoder {
     private MockChannelStreamEncoder( List<ColumnSpec> columns, PipedInputStream inputStream ) throws IOException {
       super( columns, inputStream );

@@ -69,6 +69,5 @@ public class VerticaBulkLoaderMetaTest {
     int targetSz = vbl.getFieldDatabase().length;
 
     assertEquals( targetSz, vbl.getFieldStream().length );
-
   }
 }
