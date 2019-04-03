@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2019 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload.nativebinary;
@@ -156,21 +156,29 @@ public class StreamEncoder {
 
     // record the start of this row so we can come back and update the size and nulls
     int rowDataSizeFieldPosition = buffer.position();
+    // Marking the original position, in case we need to reset
+    buffer.mark();
     buffer.putInt( rowDataSize );
     int rowNullsFieldPosition = buffer.position();
     rowNulls.writeBytesTo( buffer );
 
-    for ( int i = 0; i < columnCount; i++ ) {
-      ColumnSpec colSpec = columns.get( i );
-      Object value = row[i];
-      ValueMetaInterface valueMeta = rowMeta.getValueMeta( i );
+    try {
+      for ( int i = 0; i < columnCount; i++ ) {
+        ColumnSpec colSpec = columns.get( i );
+        Object value = row[ i ];
+        ValueMetaInterface valueMeta = rowMeta.getValueMeta( i );
 
-      if ( value == null ) {
-        rowNulls.setBit( i );
-      } else {
-        colSpec.encode( valueMeta, value );
-        rowDataSize += colSpec.bytes;
+        if ( value == null ) {
+          rowNulls.setBit( i );
+        } else {
+          colSpec.encode( valueMeta, value );
+          rowDataSize += colSpec.bytes;
+        }
       }
+    } catch ( KettleValueException ex ) {
+      //restore the buffer before the row
+      buffer.reset();
+      throw ex;
     }
 
     // Now fill in the row header
