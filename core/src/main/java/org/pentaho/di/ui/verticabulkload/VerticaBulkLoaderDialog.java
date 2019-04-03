@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Hitachi Vantara..  All rights reserved.
+* Copyright (c) 2002-2019 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.ui.verticabulkload;
@@ -342,6 +342,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     fdDirect.top = new FormAttachment( 0, margin );
     fdDirect.right = new FormAttachment( 100, 0 );
     wDirect.setLayoutData( fdDirect );
+    wDirect.addSelectionListener( lsSelMod );
 
     // Abort on error
     wlAbortOnError = new Label( wMainComp, SWT.RIGHT );
@@ -361,6 +362,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     fdAbortOnError.top = new FormAttachment( wDirect, margin );
     fdAbortOnError.right = new FormAttachment( 100, 0 );
     wAbortOnError.setLayoutData( fdAbortOnError );
+    wAbortOnError.addSelectionListener( lsSelMod );
 
     // ExceptionsLogFile line...
     wlExceptionsLogFile = new Label( wMainComp, SWT.RIGHT );

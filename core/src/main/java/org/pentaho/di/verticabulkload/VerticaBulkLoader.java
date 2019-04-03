@@ -12,7 +12,7 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Hitachi Vantara..  All rights reserved.
+* Copyright (c) 2002-2019 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
@@ -34,6 +34,7 @@ import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleStepException;
+import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
@@ -53,12 +54,21 @@ import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnType;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
 
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.stream.Collectors;
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface {
   private static Class<?> PKG = VerticaBulkLoader.class; // for i18n purposes, needed by Translator2!!
 
+  private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat( "yyyy/MM/dd HH:mm:ss" );
   private VerticaBulkLoaderMeta meta;
   private VerticaBulkLoaderData data;
+  private FileOutputStream exceptionLog;
+  private FileOutputStream rejectedLog;
 
   public VerticaBulkLoader( StepMeta stepMeta, StepDataInterface stepDataInterface, int copyNr, TransMeta transMeta,
       Trans trans ) {
@@ -185,6 +195,66 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     }
 
     return true;
+  }
+
+  @VisibleForTesting
+  void initializeLogFiles() throws KettleException {
+    // Checking only for null, if we do a isEmpty check, the way the dialog sends the data will either be null (if not set)
+    // or if you add an empty string with a space, it will see it as not empty. So only a null check needed here.
+    try {
+      if ( meta.getExceptionsFileName() != null ) {
+        exceptionLog = new FileOutputStream( meta.getExceptionsFileName(),  true );
+      }
+      if ( meta.getRejectedDataFileName() != null ) {
+        rejectedLog = new FileOutputStream( meta.getRejectedDataFileName(), true );
+      }
+    } catch ( FileNotFoundException ex ) {
+      throw new KettleException( ex );
+    }
+  }
+  @VisibleForTesting
+  void writeExceptionRejectionLogs( KettleValueException valueException, Object[] outputRowData ) throws IOException {
+    String dateTimeString = ( SIMPLE_DATE_FORMAT.format( new Date( System.currentTimeMillis() ) ) ) + " - ";
+    logError( BaseMessages.getString( PKG, "VerticaBulkLoader.Exception.RowRejected",
+      Arrays.stream( outputRowData ).map( Object::toString ).collect( Collectors.joining( " | " ) ) ) );
+
+    if ( exceptionLog != null ) {
+      // Replace used to ensure timestamps are being added appropriately (some messages are multi-line)
+      exceptionLog.write( ( dateTimeString + valueException.getMessage().replace( System.lineSeparator(),
+        System.lineSeparator() + dateTimeString ) ).getBytes() );
+      exceptionLog.write( System.lineSeparator().getBytes() );
+      for ( StackTraceElement element : valueException.getStackTrace() ) {
+        exceptionLog.write( ( dateTimeString + "at " + element.toString() + System.lineSeparator() ).getBytes() );
+      }
+      exceptionLog.write(
+        ( dateTimeString + "Caused by: " + valueException.getClass().toString() + System.lineSeparator() ).getBytes() );
+      // Replace used to ensure timestamps are being added appropriately (some messages are multi-line)
+      exceptionLog.write( ( ( dateTimeString + valueException.getCause().getMessage().replace( System.lineSeparator(),
+        System.lineSeparator() + dateTimeString ) ).getBytes() ) );
+      exceptionLog.write( System.lineSeparator().getBytes() );
+    }
+    if ( rejectedLog != null ) {
+      rejectedLog.write( ( dateTimeString + BaseMessages.getString( PKG, "VerticaBulkLoader.Exception.RowRejected",
+        Arrays.stream( outputRowData ).map( Object::toString ).collect( Collectors.joining( " | " ) ) ) ).getBytes() );
+      for ( Object outputRowDatum : outputRowData ) {
+        rejectedLog.write( ( outputRowDatum.toString() + " | " ).getBytes() );
+      }
+      rejectedLog.write( System.lineSeparator().getBytes() );
+    }
+  }
+
+  @VisibleForTesting
+  void closeLogFiles() throws KettleException {
+    try {
+      if ( exceptionLog != null ) {
+        exceptionLog.close();
+      }
+      if ( rejectedLog != null ) {
+        rejectedLog.close();
+      }
+    } catch ( IOException exception ) {
+      throw new KettleException( exception );
+    }
   }
 
   private ColumnSpec getColumnSpecFromField( ValueMetaInterface inputValueMeta, ValueMetaInterface insertValueMeta,
@@ -374,6 +444,20 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
     try {
       data.encoder.writeRow( data.insertRowMeta, insertRowData );
+    } catch ( KettleValueException valueException ) {
+      /*
+      *  If we are to abort, we should continue throwing the exception. If we are not aborting, we need to set the
+      *  outputRowData to null, so the next step knows not to add it and continue. We also need to write to the
+      *  rejected log what data failed (print out the outputRowData before null'ing it) and write to the error log the
+      *  issue.
+      */
+      //write outputRowData -> Rejected Row
+      //write Error Log as to why it was rejected
+      writeExceptionRejectionLogs( valueException, outputRowData );
+      if ( meta.isAbortOnError() ) {
+        throw valueException;
+      }
+      outputRowData = null;
     } catch ( IOException e ) {
       if ( !data.isStopped() ) {
         throw new KettleException( "I/O Error during row write.", e );
@@ -391,6 +475,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     if ( super.init( smi, sdi ) ) {
       try {
         data.databaseMeta = meta.getDatabaseMeta();
+        initializeLogFiles();
 
         data.db = new Database( this, meta.getDatabaseMeta() );
         data.db.shareVariablesWith( this );
@@ -417,6 +502,17 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       }
     }
     return false;
+  }
+
+  @Override
+  public void markStop() {
+    // Close the exception/rejected loggers at the end
+    try {
+      closeLogFiles();
+    } catch ( KettleException ex ) {
+      logError( BaseMessages.getString( PKG, "VerticaBulkLoader.Exception.ClosingLogError", ex ) );
+    }
+    super.markStop();
   }
 
   @Override
