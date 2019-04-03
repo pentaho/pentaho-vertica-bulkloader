@@ -12,17 +12,16 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2019 Hitachi Vantara..  All rights reserved.
 */
 package org.pentaho.di.verticabulkload;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.pentaho.di.core.row.RowMeta;
-import org.pentaho.di.trans.steps.mock.StepMockHelper;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.fail;
+import static org.junit.Assert.assertEquals;
 
 public class VerticaBulkLoaderMetaTest {
   @Test
@@ -51,28 +50,24 @@ public class VerticaBulkLoaderMetaTest {
   }
 
   @Test
-  public void testPDI16559() throws Exception {
-    StepMockHelper<VerticaBulkLoaderMeta, VerticaBulkLoaderData> mockHelper =
-        new StepMockHelper<VerticaBulkLoaderMeta, VerticaBulkLoaderData>( "update", VerticaBulkLoaderMeta.class, VerticaBulkLoaderData.class );
-
+  public void testGetXml() throws Exception {
     VerticaBulkLoaderMeta vbl = new VerticaBulkLoaderMeta();
     vbl.setDefault();
     vbl.setFieldDatabase( new String[] { "fieldDB1", "fieldDB2", "fieldDB3", "fieldDB4", "fieldDB5" } );
     vbl.setFieldStream( new String[] { "fieldStr1", "fieldStr2", "fieldStr3" } );
 
     try {
-      String badXml = vbl.getXML();
-      Assert.fail( "Before calling afterInjectionSynchronization, should have thrown an ArrayIndexOOB" );
+      vbl.getXML();
+      fail( "Before calling afterInjectionSynchronization, should have thrown an ArrayIndexOOB" );
     } catch ( Exception expected ) {
       // Do Nothing
     }
     vbl.afterInjectionSynchronization();
     //run without a exception
-    String ktrXml = vbl.getXML();
+    vbl.getXML();
 
     int targetSz = vbl.getFieldDatabase().length;
 
-    Assert.assertEquals( targetSz, vbl.getFieldStream().length );
-
+    assertEquals( targetSz, vbl.getFieldStream().length );
   }
 }

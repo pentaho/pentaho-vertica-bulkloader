@@ -12,13 +12,13 @@
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU Lesser General Public License for more details.
 *
-* Copyright (c) 2002-2017 Pentaho Corporation..  All rights reserved.
+* Copyright (c) 2002-2019 Hitachi Vantara..  All rights reserved.
 */
 
 package org.pentaho.di.verticabulkload;
 
 import com.vertica.jdbc.VerticaCopyStream;
-import junit.framework.Assert;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -44,6 +44,9 @@ import java.nio.channels.WritableByteChannel;
 import java.sql.SQLException;
 import java.util.List;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.matchers.JUnitMatchers.containsString;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -57,40 +60,53 @@ import static org.mockito.Mockito.when;
  */
 public class VerticaBulkLoaderTest {
 
-    private VerticaBulkLoaderMeta loaderMeta;
-    private VerticaBulkLoaderData loaderData;
-    private VerticaBulkLoader loader;
+  private VerticaBulkLoaderMeta loaderMeta;
+  private VerticaBulkLoaderData loaderData;
+  private VerticaBulkLoader loader;
 
-    @BeforeClass
-    public static void initEnvironment() throws Exception {
-        KettleEnvironment.init();
+  @BeforeClass
+  public static void initEnvironment() throws Exception {
+    KettleEnvironment.init();
+  }
+
+  @Before
+  public void setUp() throws KettlePluginException, SQLException {
+    PluginRegistry.addPluginType( ValueMetaPluginType.getInstance() );
+    PluginRegistry.init( true );
+
+    loaderData = new VerticaBulkLoaderData();
+    loaderMeta = spy( new VerticaBulkLoaderMeta() );
+
+    TransMeta transMeta = new TransMeta();
+    transMeta.setName( "loader" );
+
+    PluginRegistry pluginRegistry = PluginRegistry.getInstance();
+
+    String loaderPid = pluginRegistry.getPluginId( StepPluginType.class, loaderMeta );
+    StepMeta stepMeta = new StepMeta( loaderPid, "loader", loaderMeta );
+    Trans trans = new Trans( transMeta );
+    transMeta.addStep( stepMeta );
+    trans.setRunning( true );
+
+    loaderMeta.setDatabaseMeta( mock( DatabaseMeta.class ) );
+
+    loader = spy( new VerticaBulkLoader( stepMeta, loaderData, 1, transMeta, trans ) );
+
+    doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
+  }
+
+  @Test
+  public void testNoDatabaseConnection() {
+    loaderMeta.setDatabaseMeta( null );
+    // Verify that the initializing will return false due to the connection not being defined.
+    assertFalse( loader.init( loaderMeta, loaderData ) );
+    try {
+      // Verify that the database connection being set to null throws a KettleException with the following message.
+      loader.verifyDatabaseConnection();
+    } catch ( KettleException aKettleException ) {
+      assertThat( aKettleException.getMessage(), containsString( "There is no connection defined in this step" ) );
     }
-
-    @Before
-    public void setUp() throws KettlePluginException, SQLException {
-        PluginRegistry.addPluginType( ValueMetaPluginType.getInstance() );
-        PluginRegistry.init( true );
-
-        loaderData = new VerticaBulkLoaderData();
-        loaderMeta = spy( new VerticaBulkLoaderMeta() );
-
-        TransMeta transMeta = new TransMeta();
-        transMeta.setName( "loader" );
-
-        PluginRegistry pluginRegistry = PluginRegistry.getInstance();
-
-        String loaderPid = pluginRegistry.getPluginId( StepPluginType.class, loaderMeta );
-        StepMeta stepMeta = new StepMeta( loaderPid, "loader", loaderMeta );
-        Trans trans = new Trans( transMeta );
-        transMeta.addStep( stepMeta );
-        trans.setRunning( true );
-
-        loaderMeta.setDatabaseMeta( mock( DatabaseMeta.class ) );
-
-        loader = spy( new VerticaBulkLoader( stepMeta, loaderData, 1, transMeta, trans ) );
-
-        doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
-    }
+  }
 
     /**
      * Testing boundary condition of buffer size handling.
@@ -100,109 +116,109 @@ public class VerticaBulkLoaderTest {
      *     then the buffer should not be overflowed.
      * </p>
      */
-    @Test
-    @SuppressWarnings( "unchecked" )
-    public void shouldFlushBufferBeforeItOverflows() throws KettleException, IOException {
-        // given
-        RowMeta rowMeta = new RowMeta();
-        rowMeta.addValueMeta( new ValueMetaString( "Test1" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test2" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test3" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test4" ) );
-        loader.setInputRowMeta( rowMeta );
+  @Test
+  @SuppressWarnings( "unchecked" )
+  public void shouldFlushBufferBeforeItOverflows() throws KettleException, IOException {
+    // given
+    RowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta( new ValueMetaString( "Test1" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test2" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test3" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test4" ) );
+    loader.setInputRowMeta( rowMeta );
 
-        RowMeta tableMeta = new RowMeta();
-        tableMeta.addValueMeta( getValueMetaString( "TestData1", 19 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData2", 4 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData3", 7 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData4", 8 ) );
-        doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
+    RowMeta tableMeta = new RowMeta();
+    tableMeta.addValueMeta( getValueMetaString( "TestData1", 19 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData2", 4 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData3", 7 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData4", 8 ) );
+    doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
 
-        loader.init( loaderMeta, loaderData );
-        when( loader.getRow() ).thenReturn( new String[] { "19 characters------", "4 ch", "7 chara", "8 charac" } );
+    loader.init( loaderMeta, loaderData );
+    when( loader.getRow() ).thenReturn( new String[] { "19 characters------", "4 ch", "7 chara", "8 charac" } );
 
-        doAnswer(invocation -> {
-            List colSpecs = (List) invocation.getArguments()[ 0 ];
-            PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[ 1 ];
-            return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
-        }).when( loader ).createStreamEncoder( any(), any() );
+    doAnswer( invocation -> {
+      List colSpecs = (List) invocation.getArguments()[ 0 ];
+      PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[ 1 ];
+      return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
+    } ).when( loader ).createStreamEncoder( any(), any() );
 
-        // when
-        try {
-            for ( int i = 0; i < StreamEncoder.NUM_ROWS_TO_BUFFER + 1; i++ ) {
-                loader.processRow( loaderMeta, loaderData );
-            }
-        } catch ( BufferOverflowException e ) {
-            Assert.fail( e.getMessage() );
-        }
-
-        // then no BufferOverflowException should be thrown
+    // when
+    try {
+      for ( int i = 0; i < StreamEncoder.NUM_ROWS_TO_BUFFER + 1; i++ ) {
+        loader.processRow( loaderMeta, loaderData );
+      }
+    } catch ( BufferOverflowException e ) {
+      Assert.fail( e.getMessage() );
     }
 
-    /**
-     * Testing boundary condition of buffer size handling.
-     * <p>
-     *     Given 7 varchar fields of small sizes.
-     *     When loaded data amount is getting close to a buffer size,
-     *     then the buffer should not be overflowed.
-     * </p>
-     */
-    @Test
-    @SuppressWarnings( "unchecked" )
-    public void shouldFlushBufferBeforeItOverflowsOnSmallFieldSizes() throws KettleException, IOException {
-        // given
-        RowMeta rowMeta = new RowMeta();
-        rowMeta.addValueMeta( new ValueMetaString( "Test1" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test2" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test3" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test4" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test5" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test6" ) );
-        rowMeta.addValueMeta( new ValueMetaString( "Test7" ) );
-        loader.setInputRowMeta( rowMeta );
+    // then no BufferOverflowException should be thrown
+  }
 
-        RowMeta tableMeta = new RowMeta();
-        tableMeta.addValueMeta( getValueMetaString( "TestData1", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData2", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData3", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData4", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData5", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData6", 1 ) );
-        tableMeta.addValueMeta( getValueMetaString( "TestData7", 1 ) );
-        doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
+  /**
+   * Testing boundary condition of buffer size handling.
+   * <p>
+   *     Given 7 varchar fields of small sizes.
+   *     When loaded data amount is getting close to a buffer size,
+   *     then the buffer should not be overflowed.
+   * </p>
+   */
+  @Test
+  @SuppressWarnings( "unchecked" )
+  public void shouldFlushBufferBeforeItOverflowsOnSmallFieldSizes() throws KettleException, IOException {
+    // given
+    RowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta( new ValueMetaString( "Test1" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test2" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test3" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test4" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test5" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test6" ) );
+    rowMeta.addValueMeta( new ValueMetaString( "Test7" ) );
+    loader.setInputRowMeta( rowMeta );
 
-        loader.init( loaderMeta, loaderData );
-        when( loader.getRow() ).thenReturn( new String[] { "1", "1", "1", "1", "1", "1", "1" } );
+    RowMeta tableMeta = new RowMeta();
+    tableMeta.addValueMeta( getValueMetaString( "TestData1", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData2", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData3", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData4", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData5", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData6", 1 ) );
+    tableMeta.addValueMeta( getValueMetaString( "TestData7", 1 ) );
+    doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
 
-        doAnswer(invocation -> {
-            List colSpecs = (List) invocation.getArguments()[ 0 ];
-            PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[ 1 ];
-            return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
-        }).when( loader ).createStreamEncoder( any(), any() );
+    loader.init( loaderMeta, loaderData );
+    when( loader.getRow() ).thenReturn( new String[] { "1", "1", "1", "1", "1", "1", "1" } );
 
-        // when
-        try {
-            for ( int i = 0; i < StreamEncoder.NUM_ROWS_TO_BUFFER + 1; i++ ) {
-                loader.processRow( loaderMeta, loaderData );
-            }
-        } catch ( BufferOverflowException e ) {
-            Assert.fail( e.getMessage() );
-        }
+    doAnswer( invocation -> {
+      List colSpecs = (List) invocation.getArguments()[ 0 ];
+      PipedInputStream pipedInputStream = (PipedInputStream) invocation.getArguments()[ 1 ];
+      return new MockChannelStreamEncoder( colSpecs, pipedInputStream );
+    } ).when( loader ).createStreamEncoder( any(), any() );
 
-        // then no BufferOverflowException should be thrown
+    // when
+    try {
+      for ( int i = 0; i < StreamEncoder.NUM_ROWS_TO_BUFFER + 1; i++ ) {
+        loader.processRow( loaderMeta, loaderData );
+      }
+    } catch ( BufferOverflowException e ) {
+      Assert.fail( e.getMessage() );
     }
 
-    private class MockChannelStreamEncoder extends StreamEncoder {
-        private MockChannelStreamEncoder( List<ColumnSpec> columns, PipedInputStream inputStream ) throws IOException {
-            super( columns, inputStream );
-            channel = mock( WritableByteChannel.class );
-        }
-    }
+    // then no BufferOverflowException should be thrown
+  }
 
-    private static ValueMetaString getValueMetaString( String testData3, int length ) {
-        ValueMetaString tableValueMeta = new ValueMetaString( testData3 );
-        tableValueMeta.setLength( length );
-        tableValueMeta.setOriginalColumnTypeName( "VARCHAR" );
-        return tableValueMeta;
+  private class MockChannelStreamEncoder extends StreamEncoder {
+    private MockChannelStreamEncoder( List<ColumnSpec> columns, PipedInputStream inputStream ) throws IOException {
+      super( columns, inputStream );
+      channel = mock( WritableByteChannel.class );
     }
+  }
+
+  private static ValueMetaString getValueMetaString( String testData3, int length ) {
+    ValueMetaString tableValueMeta = new ValueMetaString( testData3 );
+    tableValueMeta.setLength( length );
+    tableValueMeta.setOriginalColumnTypeName( "VARCHAR" );
+    return tableValueMeta;
+  }
 }
