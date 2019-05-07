@@ -48,6 +48,11 @@ public class VerticaBulkLoaderMetaInjectionTest extends BaseMetadataInjectionTes
         return meta.isDirect();
       }
     } );
+    check( "ENFORCELENGTH", new BooleanGetter() {
+      public boolean get() {
+        return meta.isEnforcelength();
+      }
+    } );
     check( "ABORTONERROR", new BooleanGetter() {
       public boolean get() {
         return meta.isAbortOnError();

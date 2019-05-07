@@ -403,7 +403,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     }
 
     // TODO: Should eventually get a preference for this, but for now, be backward compatible.
-    sb.append( "ENFORCELENGTH " );
+    if ( !meta.isEnforcelength() ) {
+      sb.append("ENFORCELENGTH ");
+    }
 
     if ( meta.isAbortOnError() ) {
       sb.append( "ABORT ON ERROR " );
