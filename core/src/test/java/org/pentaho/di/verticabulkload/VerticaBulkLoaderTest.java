@@ -75,6 +75,9 @@ public class VerticaBulkLoaderTest {
   private VerticaBulkLoader loader;
   private File tempException;
   private File tempRejected;
+  private String kettleValueExceptionMsg;
+  private KettleValueException kettleValueException;
+  private Object[] rowData;
 
   @BeforeClass
   public static void initEnvironment() throws Exception {
@@ -117,6 +120,9 @@ public class VerticaBulkLoaderTest {
     loader.init( loaderMeta, loaderData );
 
     doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
+    kettleValueExceptionMsg = "Test Kettle Value Exception";
+    kettleValueException = new KettleValueException( kettleValueExceptionMsg, new Exception( "Throwable Exception" ) );
+    rowData = new Object[] {"this", "is", "bad", "data" };
   }
 
   @After
@@ -277,22 +283,7 @@ public class VerticaBulkLoaderTest {
    */
   @Test
   public void logFilesInitializeAndWritingTest() {
-    Object[] rowData = {"this", "is", "bad", "data" };
     String rowString = "this | is | bad | data";
-    String kettleValueExceptionMsg = "Test Kettle Value Exception";
-
-    // Verify that nulling the Logs does not throw errors in our process
-    loaderMeta.setExceptionsFileName( null );
-    loaderMeta.setRejectedDataFileName( null );
-    KettleValueException kettleValueException = new KettleValueException( kettleValueExceptionMsg,
-      new Exception( "Throwable Exception" ) );
-    try {
-      loader.initializeLogFiles();
-      loader.writeExceptionRejectionLogs( kettleValueException, rowData );
-      loader.closeLogFiles();
-    } catch ( KettleException | IOException nullIssueException ) {
-      fail( "Nulling the Exception/Rejection logs should not throw an Exception: " + nullIssueException );
-    }
 
     // Verify that setting the values does not throw errors in our process
     // Verify that we are able to print out the exception and rejection logs as well.
@@ -331,6 +322,33 @@ public class VerticaBulkLoaderTest {
     } catch ( KettleException ex ) {
       // also verify the init method throws a false
       assertFalse( loader.init( loaderMeta, loaderData ) );
+    }
+  }
+
+  @Test
+  public void nullLogFilesAllowed() {
+    runUndefinedLogFilesTest( null, null, "Nulling" );
+  }
+
+  @Test
+  public void emptyLogFilesAllowed() {
+    runUndefinedLogFilesTest( "", "", "Emptying" );
+  }
+
+  @Test
+  public void blankjLogFilesAllowed() {
+    runUndefinedLogFilesTest( "   ", "  \n", "Blanking" );
+  }
+
+  private void runUndefinedLogFilesTest( String exceptionsFileName, String rejectedDataFileName, String prefix ) {
+    loaderMeta.setExceptionsFileName( exceptionsFileName );
+    loaderMeta.setRejectedDataFileName( rejectedDataFileName );
+    try {
+      loader.initializeLogFiles();
+      loader.writeExceptionRejectionLogs( kettleValueException, rowData );
+      loader.closeLogFiles();
+    } catch ( KettleException | IOException nullIssueException ) {
+      fail( prefix + " the Exception/Rejection logs should not throw an Exception: " + nullIssueException );
     }
   }
 
