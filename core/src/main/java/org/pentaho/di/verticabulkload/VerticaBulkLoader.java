@@ -59,6 +59,8 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+import static org.apache.commons.lang.StringUtils.isNotBlank;
+
 
 public class VerticaBulkLoader extends BaseStep implements StepInterface {
   private static Class<?> PKG = VerticaBulkLoader.class; // for i18n purposes, needed by Translator2!!
@@ -198,13 +200,11 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   @VisibleForTesting
   void initializeLogFiles() throws KettleException {
-    // Checking only for null, if we do a isEmpty check, the way the dialog sends the data will either be null (if not set)
-    // or if you add an empty string with a space, it will see it as not empty. So only a null check needed here.
     try {
-      if ( meta.getExceptionsFileName() != null ) {
+      if ( isNotBlank( meta.getExceptionsFileName() ) ) {
         exceptionLog = new FileOutputStream( meta.getExceptionsFileName(),  true );
       }
-      if ( meta.getRejectedDataFileName() != null ) {
+      if ( isNotBlank( meta.getRejectedDataFileName() ) ) {
         rejectedLog = new FileOutputStream( meta.getRejectedDataFileName(), true );
       }
     } catch ( FileNotFoundException ex ) {
