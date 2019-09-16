@@ -5,11 +5,10 @@
   <parent>
     <groupId>org.pentaho</groupId>
     <artifactId>vertica-bulkloader</artifactId>
-    <version>7.1-SNAPSHOT</version>
+    <version>7.1.0.28-223</version>
   </parent>
   <artifactId>vertica-bulkloader-core</artifactId>
-  <version>7.1-SNAPSHOT</version>
-  <packaging>jar</packaging>
+  <version>7.1.0.28-223</version>
   <name>${project.artifactId}</name>
   <description></description>
   <dependencies>
@@ -46,4 +45,4 @@
       <artifactId>javax.servlet-api</artifactId>
     </dependency>
   </dependencies>
- </project>
+</project>
