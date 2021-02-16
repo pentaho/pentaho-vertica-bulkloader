@@ -5,10 +5,10 @@
   <parent>
     <groupId>org.pentaho</groupId>
     <artifactId>vertica-bulkloader-assemblies</artifactId>
-    <version>9.2.0.0-SNAPSHOT</version>
+    <version>9.2.0.0-210</version>
   </parent>
   <artifactId>vertica-bulkloader-plugin</artifactId>
-  <version>9.2.0.0-SNAPSHOT</version>
+  <version>9.2.0.0-210</version>
   <packaging>pom</packaging>
   <name>${project.artifactId}</name>
   <description></description>
