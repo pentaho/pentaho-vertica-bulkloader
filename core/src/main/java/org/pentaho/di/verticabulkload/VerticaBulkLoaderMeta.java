@@ -62,7 +62,7 @@ import org.w3c.dom.Node;
     i18nPackageName = "plugin.com.vertica.kettle.bulkloader", name = "VerticaBulkLoaderMeta.TypeLongDesc",
     description = "VerticaBulkLoaderMeta.TypeTooltipDesc",
     categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Bulk",
-    documentationUrl = "http://wiki.pentaho.com/display/EAI/Vertica+Bulk+Loader" )
+    documentationUrl = "https://pentaho-community.atlassian.net/wiki/display/EAI/Vertica+Bulk+Loader" )
 
 @InjectionSupported( localizationPrefix = "VerticaBulkLoader.Injection.", groups = { "FIELDS", "MAIN_OPTIONS", "DATABASE_FIELDS" } )
 public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInterface, ProvidesModelerMeta {
