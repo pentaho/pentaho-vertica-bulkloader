@@ -80,6 +80,9 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
   @Injection( name = "DIRECT", group = "MAIN_OPTIONS" )
   private boolean direct = true;
 
+  @Injection( name = "ENFORCELENGTH", group = "MAIN_OPTIONS" )
+  private boolean enforcelength = true;
+
   @Injection( name = "ABORTONERROR", group = "MAIN_OPTIONS" )
   private boolean abortOnError = true;
 
@@ -205,6 +208,12 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
     this.direct = direct;
   }
 
+  public boolean isEnforcelength() {   return enforcelength;  }
+
+  public void setEnforcelength( boolean enforcelength ) {
+    this.enforcelength = enforcelength;
+  }
+
   public boolean isAbortOnError() {
     return abortOnError;
   }
@@ -268,6 +277,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       rejectedDataFileName = XMLHandler.getTagValue( stepnode, "rejected_data_filename" );
       abortOnError = "Y".equalsIgnoreCase( XMLHandler.getTagValue( stepnode, "abort_on_error" ) );
       direct = "Y".equalsIgnoreCase( XMLHandler.getTagValue( stepnode, "direct" ) );
+      enforcelength = "Y".equalsIgnoreCase( XMLHandler.getTagValue( stepnode, "enforcelength" ) );
       streamName = XMLHandler.getTagValue( stepnode, "stream_name" );
 
     } catch ( Exception e ) {
@@ -305,6 +315,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
     retval.append( "    " + XMLHandler.addTagValue( "rejected_data_filename", rejectedDataFileName ) );
     retval.append( "    " + XMLHandler.addTagValue( "abort_on_error", abortOnError ) );
     retval.append( "    " + XMLHandler.addTagValue( "direct", direct ) );
+    retval.append( "    " + XMLHandler.addTagValue( "enforcelength", enforcelength ) );
     retval.append( "    " + XMLHandler.addTagValue( "stream_name", streamName ) );
 
     return retval.toString();
@@ -334,6 +345,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       rejectedDataFileName = rep.getStepAttributeString( id_step, "rejected_data_filename" );
       abortOnError = rep.getStepAttributeBoolean( id_step, "abort_on_error" );
       direct = rep.getStepAttributeBoolean( id_step, "direct" );
+      enforcelength = rep.getStepAttributeBoolean( id_step, "enforcelength" );
       streamName = rep.getStepAttributeString( id_step, "stream_name" );
     } catch ( Exception e ) {
       throw new KettleException( "Unexpected error reading step information from the repository", e );
@@ -359,6 +371,7 @@ public class VerticaBulkLoaderMeta extends BaseStepMeta implements StepMetaInter
       rep.saveStepAttribute( id_transformation, id_step, "rejected_data_filename", rejectedDataFileName );
       rep.saveStepAttribute( id_transformation, id_step, "abort_on_error", abortOnError );
       rep.saveStepAttribute( id_transformation, id_step, "direct", direct );
+      rep.saveStepAttribute( id_transformation, id_step, "enforcelength", enforcelength );
       rep.saveStepAttribute( id_transformation, id_step, "stream_name", streamName );
     } catch ( Exception e ) {
       throw new KettleException( "Unable to save step information to the repository for id_step=" + id_step, e );
