@@ -29,6 +29,7 @@ import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleValueException;
+import org.pentaho.di.core.plugins.DatabasePluginType;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.plugins.StepPluginType;
 import org.pentaho.di.core.row.RowMeta;
@@ -92,6 +93,7 @@ public class VerticaBulkLoaderTest {
   @Before
   public void setUp() throws KettleException, IOException, SQLException {
     PluginRegistry.addPluginType( ValueMetaPluginType.getInstance() );
+    PluginRegistry.addPluginType( DatabasePluginType.getInstance() );
     PluginRegistry.init( true );
 
     loaderData = new VerticaBulkLoaderData();
