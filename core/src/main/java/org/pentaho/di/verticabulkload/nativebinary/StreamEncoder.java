@@ -46,6 +46,9 @@ public class StreamEncoder {
   private static final byte BYTE_CR = (byte) 0x0D;
 
   private static final int MAX_CHAR_LENGTH = 65000;
+  
+  //https://docs.vertica.com/24.1.x/en/sql-reference/data-types/long-data-types/
+  private static final int MAX_LONG_VARCHAR_LENGTH = 32000000;
 
   private static final int MAXIMUM_BUFFER_SIZE = Integer.MAX_VALUE - 8;
 
@@ -73,7 +76,9 @@ public class StreamEncoder {
 
     this.charset = Charset.forName( "UTF-8" );
 
-    CharBuffer charBuffer = CharBuffer.allocate( MAX_CHAR_LENGTH );
+    boolean usingLongVarchar = columns.stream().anyMatch( cs -> ColumnType.LONG_VARCHAR.equals( cs.type ) );
+    
+    CharBuffer charBuffer = CharBuffer.allocate( usingLongVarchar ? MAX_LONG_VARCHAR_LENGTH : MAX_CHAR_LENGTH );
     CharsetEncoder charEncoder = charset.newEncoder();
 
     this.pipedOutputStream = new PipedOutputStream( inputStream );
@@ -83,9 +88,11 @@ public class StreamEncoder {
 
     for ( ColumnSpec column : columns ) {
       switch ( column.type ) {
+        case LONG_VARBINARY:
         case VARBINARY:
           this.rowMaxSize += 4; // consider data size bytes for variable length field
           break;
+        case LONG_VARCHAR:
         case VARCHAR:
           this.rowMaxSize += 4; // consider data size bytes for variable length field
         case NUMERIC:
