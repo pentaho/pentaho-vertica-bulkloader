@@ -120,6 +120,10 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
   private Button wDirect;
   private FormData fdlDirect, fdDirect;
 
+  private Label wlEnforcelength;
+  private Button wEnforcelength;
+  private FormData fdlEnforcelength, fdEnforcelength;
+
   private Label wlSpecifyFields;
   private Button wSpecifyFields;
   private FormData fdlSpecifyFields, fdSpecifyFields;
@@ -340,6 +344,26 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     wDirect.setLayoutData( fdDirect );
     wDirect.addSelectionListener( lsSelMod );
 
+    // Checkbox for enforcelength
+    wlEnforcelength = new Label( wMainComp, SWT.RIGHT );
+    wlEnforcelength.setText( BaseMessages.getString( PKG, "VerticaBulkLoaderDialog.Enforcelength.Label" ) );
+    wlEnforcelength.setToolTipText( BaseMessages.getString( PKG, "VerticaBulkLoaderDialog.Enforcelength.Tooltip" ) );
+    props.setLook( wlEnforcelength );
+    fdlEnforcelength = new FormData();
+    fdlEnforcelength.left = new FormAttachment( 0, 0 );
+    fdlEnforcelength.top = new FormAttachment( wDirect, margin );
+    fdlEnforcelength.right = new FormAttachment( middle, -margin );
+    wlEnforcelength.setLayoutData( fdlEnforcelength );
+    wEnforcelength = new Button( wMainComp, SWT.CHECK );
+    wEnforcelength.setToolTipText( BaseMessages.getString( PKG, "VerticaBulkLoaderDialog.Enforcelength.Tooltip" ) );
+    props.setLook( wEnforcelength );
+    fdEnforcelength = new FormData();
+    fdEnforcelength.left = new FormAttachment( middle, 0 );
+    fdEnforcelength.top = new FormAttachment( wDirect, margin );
+    fdEnforcelength.right = new FormAttachment( 100, 0 );
+    wEnforcelength.setLayoutData( fdEnforcelength );
+    wEnforcelength.addSelectionListener( lsSelMod );
+
     // Abort on error
     wlAbortOnError = new Label( wMainComp, SWT.RIGHT );
     wlAbortOnError.setText( BaseMessages.getString( PKG, "VerticaBulkLoaderDialog.AbortOnError.Label" ) );
@@ -347,7 +371,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     props.setLook( wlAbortOnError );
     fdlAbortOnError = new FormData();
     fdlAbortOnError.left = new FormAttachment( 0, 0 );
-    fdlAbortOnError.top = new FormAttachment( wDirect, margin );
+    fdlAbortOnError.top = new FormAttachment( wEnforcelength, margin );
     fdlAbortOnError.right = new FormAttachment( middle, -margin );
     wlAbortOnError.setLayoutData( fdlAbortOnError );
     wAbortOnError = new Button( wMainComp, SWT.CHECK );
@@ -355,7 +379,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     props.setLook( wAbortOnError );
     fdAbortOnError = new FormData();
     fdAbortOnError.left = new FormAttachment( middle, 0 );
-    fdAbortOnError.top = new FormAttachment( wDirect, margin );
+    fdAbortOnError.top = new FormAttachment( wEnforcelength, margin );
     fdAbortOnError.right = new FormAttachment( 100, 0 );
     wAbortOnError.setLayoutData( fdAbortOnError );
     wAbortOnError.addSelectionListener( lsSelMod );
@@ -825,6 +849,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     }
 
     wDirect.setSelection( input.isDirect() );
+    wEnforcelength.setSelection( input.isEnforcelength() );
     wAbortOnError.setSelection( input.isAbortOnError() );
 
     wSpecifyFields.setSelection( input.specifyFields() );
@@ -860,6 +885,7 @@ public class VerticaBulkLoaderDialog extends BaseStepDialog implements StepDialo
     info.setStreamName( wStreamName.getText() );
 
     info.setDirect( wDirect.getSelection() );
+    info.setEnforcelength( wEnforcelength.getSelection() );
     info.setAbortOnError( wAbortOnError.getSelection() );
 
     info.setSpecifyFields( wSpecifyFields.getSelection() );
