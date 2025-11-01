@@ -47,7 +47,7 @@ public class ColumnSpec {
   }
 
   public enum VariableWidthType {
-    VARCHAR( ColumnType.VARCHAR ), VARBINARY( ColumnType.VARBINARY );
+    VARCHAR( ColumnType.VARCHAR ), VARBINARY( ColumnType.VARBINARY ), LONG_VARCHAR( ColumnType.LONG_VARCHAR ), LONG_VARBINARY( ColumnType.LONG_VARBINARY );
 
     private final ColumnType type;
     private final int bytes = -1;
@@ -126,11 +126,11 @@ public class ColumnSpec {
     this.maxLength = constantWidthType.bytes;
   }
 
-  public ColumnSpec( VariableWidthType variableWidthType, int maxlenght ) {
+  public ColumnSpec( VariableWidthType variableWidthType, int maxlength ) {
     this.type = variableWidthType.type;
     this.bytes = variableWidthType.bytes;
     this.scale = 0;
-    this.maxLength = maxlenght;
+    this.maxLength = maxlength;
   }
 
   public void setCharBuffer( CharBuffer charBuffer ) {
@@ -267,6 +267,7 @@ public class ColumnSpec {
         this.mainBuffer.putLong( TimeUnit.MILLISECONDS.toMicros( milliSeconds ) );
         break;
       case VARBINARY:
+      case LONG_VARBINARY:
         sizePosition = this.mainBuffer.position();
         this.mainBuffer.putInt( 0 );
         prevPosition = this.mainBuffer.position();
@@ -277,6 +278,7 @@ public class ColumnSpec {
       case NUMERIC:
         // Numeric is encoded as VARCHAR. COPY statement uses is as a FILLER column for Vertica itself
         // to convert into internal NUMERIC data format.
+      case LONG_VARCHAR:
       case VARCHAR:
         this.charBuffer.clear();
         this.charEncoder.reset();

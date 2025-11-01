@@ -318,6 +318,10 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     } else if ( targetColumnTypeName.equals( "NUMERIC" ) ) {
       return new ColumnSpec( ColumnSpec.PrecisionScaleWidthType.NUMERIC, targetValueMeta.getLength(), targetValueMeta
           .getPrecision() );
+    } else if ( targetColumnTypeName.equals( "LONG VARCHAR" ) ) {
+      return new ColumnSpec( ColumnSpec.VariableWidthType.LONG_VARCHAR, targetValueMeta.getLength() );
+    } else if ( targetColumnTypeName.equals( "LONG VARBINARY" ) ) {
+      return new ColumnSpec( ColumnSpec.VariableWidthType.LONG_VARBINARY, targetValueMeta.getLength() );
     }
     throw new IllegalArgumentException( "Column type " + targetColumnTypeName + " not supported." ); //$NON-NLS-1$
   }
