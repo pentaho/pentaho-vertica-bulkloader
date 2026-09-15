@@ -1,5 +1,13 @@
 # PDI-20802: Vertica Bulk Loader hang investigation and fix
 
+> **Current reviewed status:** Sections 1 through 14 preserve the original investigation, live A/B evidence,
+> and first implementation recorded in commit `c488ad1c919997dd680f1381f3c58c027be1be6d`. PR review then found
+> three additional shutdown races, and CI exposed weaknesses in the existing `abortOnErrorTest` fixture.
+> [Section 15](#15-pr-review-follow-up-ci-failure-and-final-shutdown-hardening) explains those findings and the
+> reviewed implementation in simple terms. Where older cleanup wording conflicts with section 15, section 15 is
+> authoritative. The `PDI-20802_research` branch contains the full research matrix and samples; the `PDI-20802`
+> branch contains the production-focused PR changes.
+
 ## 1. Executive summary
 
 The hang is caused by a shutdown timing problem between two threads. It is not caused by the text of a specific Vertica error.
@@ -10,7 +18,11 @@ When Vertica returned a SQL exception, the old worker logged it, set the step er
 
 The old [`stopRunning()`](https://github.com/pentaho/pentaho-vertica-bulkloader/blob/80d03845ff30d04df20bd04670ffe106c07e63d5/core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L523-L540) path had a second problem. It interrupted the worker and waited for it, but it did not first close the pipe or disconnect the database.
 
-The new [`stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L593) method handles cleanup in one place. It closes the pipe first, disconnects, interrupts the worker, avoids waiting for the current thread to finish itself, and limits forced waiting to five seconds. [The worker is also a daemon thread](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L372), so it cannot keep the JVM alive by itself.
+The reviewed `stopWorker()` handles forced shutdown in one place. It publishes the stop request under the same lock
+used to publish and start workers, closes the pipe, interrupts an existing worker, and starts daemon database cleanup.
+That cleanup requests COPY cancellation, rolls back when needed, and disconnects. The worker and cleanup thread share
+one five-second deadline. Any thread still blocked after that deadline is recorded as an error and left daemonized so
+it cannot keep the JVM alive by itself.
 
 Normal end-of-input uses a different path. It [waits for the worker](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L615) before disconnecting. This allows a successful COPY to finish normally instead of being cut short by failure cleanup.
 
@@ -25,7 +37,7 @@ The final connection-loss test also used the fixed JAR. Pan returned status 1 on
 | What did the user see? | A Vertica COPY exception was logged, but the PDI transformation did not finish. |
 | What was actually stuck? | The PDI producer thread was blocked writing to a full Java pipe after the JDBC consumer thread had exited. |
 | Why did normal stop handling fail? | It stopped the transformation but did not close the pipe that could wake the blocked producer. |
-| What fixes it? | Close the pipe first. Then report the failure, disconnect, interrupt the worker, avoid waiting for the current thread, and limit forced waiting. |
+| What fixes it? | Close the pipe first. Then atomically publish stop, report failure, interrupt the worker, cancel and disconnect on daemon cleanup, avoid waiting for the current thread, and apply one deadline to forced shutdown. |
 | What proves the diagnosis? | Only the plugin JAR changed. The original JAR remained hung for more than 30 seconds. The fixed JAR exited 985 ms after the same Vertica error. |
 | What is not claimed? | Not every Vertica exception triggers the old timing problem. The row-rejection and connection-loss runs are negative controls: they failed, but did not hang with the original JAR. |
 
@@ -156,6 +168,7 @@ The report is organized in the order needed to understand and verify the change:
 3. [Reproduce the result and compare the original and fixed artifacts](#4-live-reproduction-and-validation).
 4. [Inspect the original flow, fixed flow, and detailed root cause](#5-original-control-flow).
 5. [Review the implementation, tests, acceptance criteria, and remaining limitation](#9-changes-made).
+6. [Understand the PR review findings, CI failure, and final hardening](#15-pr-review-follow-up-ci-failure-and-final-shutdown-hardening).
 
 Readers looking for the shortest proof can go directly to [the original-versus-fixed A/B result](#original-versus-fixed-live-ab). Readers preparing the environment can go directly to [the Vertica test setup](#vertica-test-setup).
 
@@ -180,7 +193,7 @@ The fix changes the failure order:
 1. One [catch block handles any exception from the worker COPY sequence](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L347-L367).
 2. The worker closes the pipe before it reports that the step has stopped with an error.
 3. Closing the read side wakes a producer blocked in the corresponding write.
-4. Forced cleanup disconnects and interrupts the worker. It does not wait for the current thread to finish itself, and it [waits no more than five seconds for another worker thread](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L593-L613).
+4. Forced cleanup publishes stop under the worker lifecycle lock, interrupts an existing worker, and runs COPY cancellation, rollback, and disconnect on a daemon cleanup thread. It never joins the current thread, and the worker and cleanup thread share one five-second deadline.
 5. The step exits with an error, allowing Pan and any parent job to continue their normal failure path.
 6. Successful end-of-input follows a separate [normal-completion wait](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L615-L625). This prevents failure cleanup from interrupting a valid COPY.
 
@@ -208,7 +221,7 @@ Runtime evidence:
 - The supplied PDI client is version `10.2.0.9-418`. It uses the same synchronous stop sequence as the [worker failure call](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L361-L367) and the step's [`stopRunning(...)` method](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L541-L548). Here, synchronous means that the caller waits while the stop work runs.
 - Runtime bytecode inspection confirmed that stopping a transformation immediately dispatches a stop request to each step and calls that step's stop-running callback.
 - Repository commit [`80d03845ff30d04df20bd04670ffe106c07e63d5`](https://github.com/pentaho/pentaho-vertica-bulkloader/tree/80d03845ff30d04df20bd04670ffe106c07e63d5) contains the code from before this fix. Historical source links below point to that commit.
-- The inspected JDBC driver provides no public close or cancel operation for [`VerticaCopyStream`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L347-L354). The plugin can stop local work only by closing the input pipe and disconnecting from the database.
+- The inspected JDBC driver provides no public close or cancel operation on `VerticaCopyStream`. Later review found a lower-level legacy-driver path through `SConnection.getDSIConnection()` and `VConnection.cancelCurrentStatement()`. The final code uses that path when available, while pipe close and daemonized disconnect remain necessary fallbacks.
 - The failure-matrix server used image `repo.pentaho.com/pntprv-docker-3rdparty-release/vertica-ce:24.1.0-0`, database `vmart`, on port 5433. The separate mergeout reproduction used `opentext/vertica-k8s:24.4.0-1-multiarch`, database `vmart`, with SQL published on port 5544.
 - The exact legacy driver was installed into PDI 10.2 `lib`; its SHA-256 is `3FEA0CA1EAD071D3A1CE022232D19C8200E889B2B657575FA1B9B551A11DD224`.
 - [Nine checked-in KTRs](samples/pdi20802/README.md#L20-L30) cover successful end-of-input, metadata failure, SQL failure in the worker, type mapping, both row-rejection modes, PDI abort, server loss, and mergeout queue bloat.
@@ -496,21 +509,26 @@ The original code also waited indefinitely for workers in both [`stopRunning()`]
 ```mermaid
 flowchart TD
     A[Vertica worker runs COPY] --> B{COPY operation returns?}
-    B -->|success| C[finish COPY and disconnect]
-    B -->|SQLException or other Exception| D[close piped input stream]
-    D --> E[set error count and stopped state]
-    E --> F[stopAll and set output done]
-    F --> G[stopRunning calls stopWorker]
-    G --> H{worker is current thread?}
-    H -->|yes| I[do not interrupt or join itself]
-    H -->|no| J[disconnect and interrupt worker]
-    J --> O[join for at most five seconds]
-    D --> K[producer flush wakes with pipe IOException]
-    K --> L[processRow fails and returns false]
-    I --> M[worker exits]
-    O --> M
-    L --> N[transformation observes failure]
-    M --> N
+  B -->|success| C{Stop requested?}
+  C -->|no| D[finish COPY]
+  C -->|yes| E[exit without finish]
+  B -->|SQLException or other Exception| F[close piped input stream]
+  F --> G[set error count and stopped state]
+  G --> H[stopAll and set output done]
+  H --> I[stopRunning publishes stop under lifecycle lock]
+  I --> J[interrupt non-current worker]
+  J --> K[start daemon cancellation and disconnect cleanup]
+  K --> L[wait for worker and cleanup until shared deadline]
+  L --> M{Either thread still alive?}
+  M -->|yes| N[record error and quarantine daemon threads]
+  M -->|no| O[forced cleanup complete]
+  F --> P[producer wakes with pipe IOException]
+  P --> Q[processRow exits]
+  D --> R[normal dispose waits for worker then disconnects]
+  E --> O
+  Q --> S[transformation observes failure]
+  N --> S
+  O --> S
 ```
 
 When input ends successfully, [`dispose()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L550-L579) does not cancel the worker. It calls [`waitForWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L615-L625), which waits for the normal COPY work to finish. This gives [`execute()` and `finish()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L351-L352) time to complete before the database is disconnected.
@@ -558,7 +576,11 @@ The baseline [`stopRunning()`](https://github.com/pentaho/pentaho-vertica-bulklo
 - disconnect the Vertica database connection before waiting;
 - detect when the worker thread itself was running cleanup, which could make it wait for itself.
 
-The new [`stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L593-L613) performs all three operations. Both [`stopRunning()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L541-L548) and [cleanup after a failure or stop](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L570-L574) use this method. During forced cleanup, the code [waits no more than five seconds for the worker](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L600-L611). [The worker is a daemon thread](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L372). Successful cleanup uses the separate normal-completion wait described above.
+The reviewed `stopWorker()` closes the pipe, publishes the stop request while holding the worker lifecycle lock, and
+captures the worker that must be stopped. It interrupts a non-current worker and starts a daemon cleanup thread for
+COPY cancellation, conditional rollback, and disconnect. Both the worker and cleanup thread use the same five-second
+deadline. The current thread is never joined, and a timed-out daemon is reported and quarantined instead of waited on
+forever. Successful cleanup still uses the separate normal-completion wait described above.
 
 ## 8. Blocking-point inventory
 
@@ -573,10 +595,10 @@ The new [`stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/Verti
 | [`stream.getRejects()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L350) | Can fail while reading driver state. | Same centralized worker failure path. |
 | [`stream.execute()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L351) | This is where the reported cluster-health exception is observed. | Same centralized worker failure path. |
 | [`stream.finish()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L352) | Can fail while the driver finalizes the COPY. | Same centralized worker failure path. |
-| [`data.db.disconnect()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L353) | Can block or fail during normal worker completion or cleanup. | [Stop cleanup calls it before waiting](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L596-L604); live server-loss validation returned promptly. The legacy API provides no independent timeout. |
-| [Forced worker join](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L600-L611) | Can wait for a driver call that ignores interruption. | A non-current worker is joined for at most five seconds; timeout marks the step failed. A current worker is never joined by itself. |
+| `data.db.disconnect()` | Can block or fail during normal worker completion or cleanup. | Healthy completion disconnects only after the worker finishes. Forced shutdown runs cancellation, rollback, and disconnect on a daemon cleanup thread, so a blocked driver call cannot indefinitely hold the PDI stop callback. |
+| Forced worker and cleanup waits | Can wait for a driver call that ignores interruption. | A non-current worker and daemon cleanup thread share one five-second deadline. Timeout marks the step failed and quarantines any surviving daemon; a current thread is never joined by itself. |
 | [Normal end-of-input wait](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L615-L623) | [Waits for `execute()` and `finish()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L351-L352) so a valid COPY can complete. | Has no time limit while the step is healthy and running normally. This remaining limitation comes from the driver. |
-| [Failure rollback](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L560-L568) | A connection may already be closed by worker cleanup. | Rollback runs only when the JDBC connection exists and is open, avoiding a secondary exception after the primary COPY failure. |
+| Failure rollback | Cancellation or network failure may already have closed the connection. | Daemon cleanup rolls back only when the step has errors and the JDBC connection exists and is open, avoiding a secondary exception after the primary COPY failure. |
 | [`setOutputDone()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L361-L367) | Tells downstream PDI steps that no more rows will arrive, but does not close the input pipe. | Still used to report completion to PDI, together with explicit pipe and database cleanup. |
 | [`putRow()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L182-L186) | May wait if the next PDI step cannot accept rows quickly enough. | The step checks the stopped state after producing a row and marks output done on failure. PDI is responsible for stopping downstream row queues. |
 | log file operations | File open/write/close can fail, but these are ordinary I/O failures rather than the Vertica pipe deadlock. | Existing error handling remains in place. |
@@ -592,11 +614,14 @@ The new [`stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/Verti
 - [handles exceptions from the complete worker COPY sequence](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L347-L367) through one catch path;
 - [closes the piped input stream immediately](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L355-L358) when the worker fails;
 - [marks the step stopped and reports the error through `setErrors(1)`, `stopAll()`, and `setOutputDone()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L361-L367);
-- [centralizes worker cleanup in `stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L593-L613);
-- [disconnects the database before waiting](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L594-L604) for a non-current worker;
-- [marks the worker daemon](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L372) and [bounds forced join to five seconds](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L604-L608);
-- [preserves the interrupt flag](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L609-L611) if the thread performing cleanup is interrupted;
-- [avoids interrupting or joining the current worker](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L600-L604) when cleanup is invoked by that worker itself;
+- synchronizes worker publication and startup with stop handling, preventing a worker from starting after stop wins the race;
+- centralizes forced cleanup in `stopWorker()` and publishes a persistent stop request;
+- interrupts the COPY worker and performs cancellation, rollback, and disconnect on a separate daemon cleanup thread;
+- gives the worker and cleanup thread one shared five-second deadline instead of an independent or unbounded wait;
+- checks the stop request after `execute()` so a timed-out worker cannot later call `finish()`;
+- marks both worker and cleanup threads daemon and reports any timed-out survivor as quarantined;
+- preserves the interrupt flag if the thread performing cleanup is interrupted;
+- avoids interrupting or joining the current worker when cleanup is invoked by that worker itself;
 - [preserves successful end-of-input](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L570-L575) by waiting for the worker to finish COPY before disconnecting;
 - [skips rollback when the JDBC connection is absent or already closed](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L560-L568).
 
@@ -617,6 +642,10 @@ The fix does not inspect Vertica error text, retry COPY, or add special handling
 
 The test setup explicitly defines reject lists and whether the step is stopped. This prevents the lifecycle tests from depending on Mockito default values or the order in which tests run.
 
+The reviewed follow-up also adds deterministic tests for the worker publication/start race, blocking database cleanup,
+a timed-out worker attempting to resume into `finish()`, and the legacy Vertica statement-cancellation path. Section
+15 maps each review concern to its test.
+
 The self-join regression was also executed against the untouched baseline source at commit `80d03845`, with the
 regression test applied only in the disposable test worktree. The baseline result was `Tests run: 1, Failures: 1,
 Errors: 0`; `shouldNotJoinTheWorkerWhenCopyFailureStopsTheTransformation` failed after 2.408 seconds because the
@@ -627,16 +656,19 @@ the new current-thread guard, rather than only the live vendor-JAR comparison, p
 
 | Acceptance criterion | Implementation evidence |
 | --- | --- |
-| Any SQL exception during bulk load terminates the step | The [worker catch block](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L347-L367) handles exceptions while creating, setting up, running, finishing, or disconnecting COPY. Every exception uses the same failure path. |
+| Any SQL exception during bulk load terminates the step | The worker catch block handles exceptions while creating, setting up, running, or finishing COPY. Forced cancellation, rollback, and disconnect have their own guarded cleanup path. |
 | Failure status reaches the transformation | The worker [sets the error count and stopped state, calls `stopAll()`, and marks output done](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L361-L367). |
-| No transformation hang or active worker remains | The failure path [closes the pipe](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L355-L358) and [waits no more than five seconds during forced cleanup](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L600-L611). In the live permission test, the original JAR was still blocked after 30 seconds. The fixed JAR returned Pan status 1 only 985 ms after the error. |
+| No transformation hang or non-daemon cleanup thread retains the JVM | The failure path closes the pipe and applies one five-second deadline to daemon worker and cleanup threads. A legacy driver thread can survive the deadline, but it is reported and cannot keep the JVM alive by itself. In the live permission test, the original JAR was still blocked after 30 seconds; the research-phase fixed JAR returned Pan status 1 only 985 ms after the error. |
 | Job-level error handling can run | With the fixed JAR, the [`permission_denied` KTR](samples/pdi20802/pdi20802_permission_denied.ktr#L14-L29) reports the failure through PDI and returns a nonzero Pan status. |
 | Successful loads remain complete | The final deployed [`success` baseline](samples/pdi20802/pdi20802_success.ktr#L118-L153) committed all 10,000 rows and returned Pan 0. |
 | No manual PDI process termination | With the fixed JAR, Pan stopped itself after COPY exceptions. Pan was terminated manually only to end the intentionally hanging original-JAR A/B test at its time limit. Only the connection-loss probe deliberately killed the Vertica container. |
 
 ## 11. Verification
 
-### Core module suite
+### Initial research-branch core suite
+
+This subsection records validation of the research-phase implementation and live-test artifact. The reviewed PR
+validation, including the four later concurrency tests, is recorded in section 15.11.
 
 Command:
 
@@ -663,7 +695,11 @@ mvn.cmd -pl core "-Dpdi.version=10.2.0.9-418" `
 
 Result: the build succeeded. The staged and deployed JARs had the same hash, and bytecode inspection confirmed Java 11 compatibility.
 
-## 12. PDI 10.2 deployment
+## 12. Research-phase PDI 10.2 deployment
+
+The artifact in this section contains the reproduced pipe-deadlock fix and produced the live A/B evidence. It predates
+the later PR-review hardening described in section 15, so "deployed" below refers to the research test installation,
+not a claim that the later reviewed source was redeployed for the same A/B run.
 
 Installed runtime:
 
@@ -677,25 +713,407 @@ The deployment JAR was built against PDI `10.2.0.9-418` with `--release 11`. The
 | --- | --- |
 | Untouched vendor backup (`.PDI-20802-original.bak`) | `273448B0E7D9950E7C94A0B6051CF710854A7264E44FB66AF2F7FA35CB931B5F` |
 | Prior fixed build (`.PDI-20802-before-closed-connection-guard.bak`) | `A75BF801A68428E83C7855D667155BD57D68800645126A764E9D4FE86D5C925E` |
-| Final staged and deployed JAR | `B280B6788C123772D23A7259992BA4C2E645DFBCEBEB3B017A9F56910974BA2F` |
+| Research-phase staged and deployed JAR | `B280B6788C123772D23A7259992BA4C2E645DFBCEBEB3B017A9F56910974BA2F` |
 
 `javap -verbose` reports major version 55 for the deployed loader class, confirming Java 11 bytecode.
 
 ## 13. Runtime limitation
 
-The Vertica 6 JDBC driver does not provide a public method to cancel or close its COPY stream. The plugin can use only the [stream operations shown here](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L347-L352).
+The Vertica 6 JDBC driver does not expose cancellation on the public `VerticaCopyStream` API. Driver inspection found a
+lower-level cancellation path: the concrete JDBC connection inherits `SConnection`, whose `getDSIConnection()` can
+return `VConnection`; `VConnection.cancelCurrentStatement()` can request cancellation of the active COPY statement.
+The reviewed implementation uses that path when those legacy driver types are present. A checked Vertica
+`GeneralException` is translated to `SQLException` at the plugin boundary.
 
-The ticket reports exceptions that the driver returns to the plugin. The fix handles those exceptions reliably. During PDI stop handling, it can [close the pipe, disconnect, interrupt the worker, and limit how long it waits for forced shutdown](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L583-L613).
+Cancellation, rollback, and disconnect can still block inside old driver or network code. They therefore run on a
+separate daemon cleanup thread during forced shutdown. The PDI stop thread applies one five-second deadline to both
+the COPY worker and cleanup thread. If either is still alive at the deadline, the step records an error and leaves the
+thread daemonized and quarantined instead of waiting forever.
 
-Two operations still depend on the legacy driver:
+This is containment, not forced thread termination. Java has no safe operation that can kill an arbitrary thread
+while preserving JDBC and application state. A quarantined daemon may remain alive until the driver call returns,
+but it cannot keep the JVM alive by itself and the PDI stop callback is no longer held indefinitely.
 
-- [`Database.disconnect()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L594-L598) runs synchronously and has no separate timeout.
-- During normal end-of-input, the step [waits for `finish()` with no deadline](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L615-L623) so a successful COPY is not interrupted.
-
-A driver call could theoretically block forever and ignore both connection close and thread interruption. In that situation, Java cannot guarantee both an immediate return and termination of the worker thread. The fix reduces the impact: [forced waiting has a time limit and the worker is a daemon thread](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L600-L611). In the live abrupt-server-loss test, the fixed JAR returned in 1,334 ms.
+Normal end-of-input intentionally remains different. While the step is healthy, it waits for `execute()` and
+`finish()` so Vertica can commit a valid COPY before disconnecting. Applying the forced-shutdown deadline to a healthy
+COPY would risk truncating successful loads.
 
 ## 14. Design rationale
 
 The solution performs [cleanup where the worker receives the exception](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L355-L367). It does not inspect the text of the error.
 
 All Vertica COPY failures use one catch block. All forced stops use [`stopWorker()`](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L593-L613). Successful end-of-input still [allows COPY to finish normally](core/src/main/java/org/pentaho/di/verticabulkload/VerticaBulkLoader.java#L570-L575). This design handles current and future cluster-health errors while preserving PDI's normal success and failure behavior.
+
+## 15. PR review follow-up: CI failure and final shutdown hardening
+
+### 15.1 Short version
+
+The first fix solved the reproduced pipe deadlock, but review correctly identified three narrower races around
+starting and stopping threads:
+
+1. A stop request could occur after a worker object was published but before that worker was started.
+2. `Database.disconnect()` could block before the code reached its five-second worker wait.
+3. A worker that survived the timeout could later call `finish()` or continue touching cleanup resources.
+
+CI also failed `abortOnErrorTest`. That did not mean the production deadlock had returned. The test fixture was built
+for synchronous row-conversion behavior and did not model the newly important asynchronous worker lifecycle. It used
+an incomplete database initialization, returned `null` from a mocked reject-list API, reused a loader after an
+intentional abort, and changed a Mockito spy while the worker thread was running.
+
+The final change therefore needed both production hardening and better tests. Fixing only the test would hide real
+shutdown risks. Fixing only production would leave CI nondeterministic and unable to prove the review requirements.
+
+### 15.2 Three different failures that must not be confused
+
+| Failure | Where it happens | What it means | Resolution |
+| --- | --- | --- | --- |
+| Original PDI-20802 product hang | A real PDI producer remains blocked writing to a full Java pipe after the COPY worker exits | The plugin did not wake both sides of its producer/consumer handoff | Close the input side on worker failure and centralize forced cleanup |
+| CI `abortOnErrorTest` failure | JUnit and Mockito test fixture | The fixture no longer represented a valid runnable loader and had asynchronous mock races | Repair setup, mock results, scenario order, and spy stubbing |
+| Local Windows Surefire failure | Surefire 2.21 starts its forked test JVM | The fork exits before JUnit discovers any test; output says `Tests run: 0` | Use Surefire 2.21's `-DforkMode=never` locally; CI test behavior must be judged only when tests actually run |
+
+The distinction matters. A test process that reports zero executed tests says nothing about whether the plugin code
+works. Conversely, a green unit test with unrealistic mocks says little about whether a real blocked pipe or JDBC
+call can shut down safely.
+
+### 15.3 Why `abortOnErrorTest` failed
+
+`abortOnErrorTest` was originally written for PDI-17400. Its purpose was simple: feed one invalid integer value and
+verify these two user settings:
+
+- with `Abort on error` disabled, reject the bad row and continue;
+- with `Abort on error` enabled, stop processing and return `false`.
+
+That test was useful for row conversion, but the Vertica bulk loader now starts a COPY worker as soon as it processes
+the first row. Once the worker became relevant to failure handling, four hidden fixture assumptions became visible.
+
+#### Fixture problem 1: mocked initialization deliberately fails
+
+The shared setup gives `init()` a mocked `DatabaseMeta` without a real database plugin. The connection attempt fails,
+and production `init()` correctly calls `stopAll()`, increments the error count, and leaves the step stopped. Older
+production code continued into `processRow()` despite that stopped flag. The hang fix correctly checks `isStopped()`
+before and after `getRow()`, so the same fixture can now return `false` before exercising row conversion.
+
+The test must explicitly clear the synthetic stopped state after this deliberately incomplete initialization. This is
+test-only repair. Production must not clear a genuine stop request.
+
+#### Fixture problem 2: Mockito returned `null` for `getRejects()`
+
+The old fixture returned a bare `VerticaCopyStream` mock. Mockito returns `null` for an unstubbed method whose return
+type is a list. The worker calls:
+
+```java
+stream.getRejects().size();
+```
+
+The real Vertica driver returns a list, including an empty list when nothing was rejected. The mock instead caused a
+`NullPointerException` on the worker thread. Because the worker now catches the complete COPY sequence, it correctly
+treated that unexpected worker exception as a load failure, set the step stopped, and closed the pipe. The production
+behavior was correct; the mock was unrealistic.
+
+The fixture now stubs `getRejects()` with `Collections.emptyList()`.
+
+#### Fixture problem 3: a stopped loader was reused
+
+The old test ran the aborting case first, then changed the option and expected the same loader to continue. That is
+not a valid lifecycle. `Abort on error` means stop the step and its transformation. A loader that has called
+`stopAll()` is not expected to restart because a test changes one metadata flag.
+
+The corrected order is:
+
+1. process a good row;
+2. process a bad row with abort disabled and verify that processing continues;
+3. process a bad row with abort enabled and verify that processing stops;
+4. do not reuse that stopped instance.
+
+#### Fixture problem 4: the Mockito spy was changed while the worker was running
+
+The worker and test thread both invoke methods on the same `VerticaBulkLoader` spy. The first attempted repair changed
+the `getRow()` stub between calls, after the worker had started. Mockito installs a spy answer against the next method
+invocation it observes. Under an unlucky schedule, the worker's concurrent `getLinesOutput()` call consumed the
+pending `Object[]` answer intended for `getRow()`. Mockito then reported:
+
+```text
+Object[] cannot be returned by getLinesOutput()
+getLinesOutput() should return long
+```
+
+This explained why one run passed and the next failed. The final fixture installs the complete sequence before any
+worker can start:
+
+```java
+doReturn( goodObjectData, badObjectData, badObjectData ).when( loader ).getRow();
+```
+
+No Mockito configuration now happens concurrently with worker execution.
+
+#### Complete CI-test correction
+
+| Incorrect assumption | Observable symptom | Correction |
+| --- | --- | --- |
+| Failed mock initialization still represents a runnable step | `processRow()` returns `false` immediately | Clear only the fixture's synthetic stopped state |
+| An unstubbed reject list behaves like the real driver | Worker throws `NullPointerException` and stops the loader | Return `Collections.emptyList()` |
+| A loader can resume after `Abort on error` stops it | Later non-abort assertion fails | Run continue-before-abort and end with the terminal case |
+| A Mockito spy can be reconfigured while another thread invokes it | Intermittent `WrongTypeOfReturnValue` | Install the entire row sequence before worker startup |
+| A generic assertion message is sufficient | CI hides the caught exception | Include the caught exception in the failure message |
+
+### 15.4 What the earlier tests did not prove
+
+Most earlier tests checked values or a final state after operations completed. The bug and review comments concern
+what happens *between* operations. For concurrency code, those are different kinds of evidence.
+
+For example, a test can prove that `stopRunning()` eventually sets `isStopped()` and still miss this sequence:
+
+```text
+Thread A creates worker in NEW state
+Thread A publishes worker reference
+Thread B requests stop
+Thread B interrupts NEW worker; interrupt has no effect
+Thread B joins NEW worker; join returns immediately because it is not alive
+Thread A starts worker
+Worker runs after shutdown was reported complete
+```
+
+Likewise, a test can prove that `join(5000)` is bounded while missing a synchronous call immediately before it:
+
+```text
+PDI stop thread -> Database.disconnect() blocks forever -> join(5000) is never reached
+```
+
+The original research tests already covered the main blocked-pipe reproduction, COPY-stage exceptions, self-join,
+manual stop, normal completion, and closed-connection rollback. Review required four additional contracts:
+
+| Previously untested contract | Risk if it is wrong | New deterministic test |
+| --- | --- | --- |
+| Stop wins while a worker is being created but has not been published or started | A new COPY can begin after shutdown | `shouldNotStartWorkerWhenStopWinsPublicationRace` |
+| Cancellation or disconnect blocks | The PDI stop callback can still hang before its worker timeout | `shouldBoundAndQuarantineBlockingDatabaseCleanup` |
+| A worker ignores interruption and survives the deadline | It can call `finish()` after cancellation and cleanup | `shouldNotFinishCopyAfterWorkerShutdownTimesOut` |
+| The legacy driver cancellation path is wired correctly | Cleanup relies only on interrupt/disconnect and may not release active COPY | `shouldCancelRunningCopyThroughVerticaDriverConnection` |
+
+The timeout tests also assert daemon status. A timeout without daemonization would still allow the leftover thread to
+keep the JVM alive.
+
+### 15.5 Review comment 1: worker publication and start must be atomic with stop
+
+In simple terms, "publication" means making a newly created thread visible to other threads by storing it in
+`data.workerThread`. A thread can exist in Java's `NEW` state before `start()` is called.
+
+Without synchronization, stop handling can observe that half-started state. Interrupting a `NEW` thread does not
+cancel its future start, and joining it does not wait for future work. Shutdown can therefore return, after which the
+producer starts the worker anyway.
+
+The reviewed implementation adds a lifecycle lock and a persistent `workerStopRequested` flag:
+
+- worker creation may happen outside the lock;
+- publication and `start()` happen together while holding the lock;
+- stop handling takes the same lock, publishes `workerStopRequested = true`, and captures the current worker;
+- if stop won first, initialization closes the captured pipe and never publishes or starts the new worker.
+
+This makes the outcome unambiguous: either the worker is published and started before stop captures it, or stop is
+visible before startup and the worker never starts. There is no published-but-not-started gap.
+
+### 15.6 Review comment 2: the timeout must include cleanup, not only `join()`
+
+The first implementation disconnected on the PDI stop thread and only then called `join(5000)`. That looks bounded
+when reading the `join`, but the bound is ineffective if disconnect itself never returns.
+
+The reviewed flow is:
+
+```mermaid
+flowchart TD
+  S[PDI stop thread] --> F[Publish stop request under lifecycle lock]
+  F --> P[Close PipedInputStream]
+  P --> I[Interrupt COPY worker]
+  I --> C[Start daemon database-cleanup thread]
+  C --> X[Cancel active Vertica statement]
+  X --> R[Rollback only when required and connection is open]
+  R --> D[Disconnect]
+  I --> W[Wait for worker until shared deadline]
+  W --> Q[Wait for cleanup only for remaining deadline]
+  Q --> E{Both threads stopped?}
+  E -->|yes| O[Forced cleanup complete]
+  E -->|no| Z[Record error and quarantine daemon threads]
+```
+
+One deadline is computed at the start of forced shutdown. Worker waiting and cleanup waiting spend from the same
+five-second budget. It is not five seconds for each operation. The stop callback therefore has a meaningful overall
+upper bound, apart from small scheduling and bookkeeping overhead.
+
+The database cleanup thread attempts, in order:
+
+1. cancel the active COPY statement through the legacy Vertica connection;
+2. roll back when the step has errors and the JDBC connection is still open;
+3. disconnect in a `finally` block.
+
+If any of those driver calls blocks, it blocks a daemon cleanup thread rather than the PDI stop thread.
+
+### 15.7 How COPY cancellation works with the legacy driver
+
+`VerticaCopyStream` 6.0 has `start`, `addStream`, `execute`, `finish`, and `getRejects`, but no public `cancel` method.
+That originally suggested disconnect was the only cancellation mechanism. Bytecode and API inspection found a lower
+layer:
+
+```text
+Vertica JDBC connection
+  -> SConnection.getDSIConnection()
+  -> VConnection.cancelCurrentStatement()
+```
+
+The plugin uses this path only when the concrete connection exposes both expected legacy types. This is intentionally
+defensive because pooled, wrapped, or future driver connections may differ. Cancellation failure is logged for
+debugging, but rollback and disconnect are still attempted.
+
+The driver method throws `GeneralException`, which is a Vertica checked exception rather than a standard JDBC
+`SQLException`. The plugin translates it to `SQLException`. This keeps the vendor-specific detail at one boundary and
+lets the cleanup code use the same JDBC-style error contract as the rest of the loader.
+
+### 15.8 Review comment 3: do not resume COPY after forced stop
+
+Java interruption is cooperative. A JDBC call may ignore it. Therefore a worker can still be alive when the
+five-second deadline expires.
+
+The reviewed worker captures the pipe reference it owns instead of repeatedly reading mutable shared state. After
+`execute()` returns, it checks `workerStopRequested` before calling `finish()`. If forced stop was observed, it exits
+without finalizing COPY. The worker itself no longer owns database disconnect; normal success cleanup and forced
+database cleanup have separate, explicit owners.
+
+If a worker or cleanup thread remains alive at the deadline:
+
+- the step records an error;
+- the remaining thread is already a daemon;
+- `dispose()` does not start an unbounded second wait;
+- no unsafe `Thread.stop()` is used;
+- the thread is described as quarantined because PDI stops depending on it, even though the JVM may let it run until
+  the driver call returns.
+
+The stop flag check cannot retroactively cancel a `finish()` call that began before the stop request. That is why the
+active-statement cancellation path and daemon containment are also required.
+
+### 15.9 Healthy completion and forced shutdown intentionally differ
+
+| Situation | Correct behavior | Reason |
+| --- | --- | --- |
+| Healthy end-of-input | Flush and close the producer output, wait for worker `execute()` and `finish()`, then disconnect | A valid COPY must be allowed to commit completely |
+| Worker reports failure | Close the input side immediately, report failure, and enter forced cleanup | A producer blocked on a full pipe must be woken |
+| Manual transformation stop | Publish stop, close the input, interrupt worker, cancel COPY, and disconnect within the shared budget | No more work should begin or finish after the stop |
+| Driver ignores stop and timeout expires | Record failure and leave only daemonized quarantined threads | PDI must regain control without using unsafe thread termination |
+
+Using the forced deadline for healthy completion would trade a shutdown hang for silent data truncation. Using the
+healthy unbounded wait during forced stop would recreate the shutdown problem. Keeping these paths separate is a
+correctness requirement, not only a performance choice.
+
+### 15.10 Why the new concurrency tests use latches
+
+Concurrency tests must prove a specific ordering. `Thread.sleep()` only guesses that another thread reached a point;
+it can pass on a fast machine and fail on a slow CI agent. The new tests use `CountDownLatch` to establish explicit
+events:
+
+- the worker factory announces that creation has begun;
+- the test issues stop before allowing publication to continue;
+- a fake disconnect announces that it is blocked;
+- a fake COPY announces that `execute()` is active;
+- the test releases blocked calls in `finally` so no test thread leaks.
+
+Small test seams make this possible without changing production defaults:
+
+- `createWorkerThread(...)` lets a test pause thread creation;
+- `createDatabaseCleanupThread(...)` lets a test observe daemon cleanup;
+- `workerShutdownTimeoutMillis()` reduces a five-second production wait to 100 ms in a unit test;
+- `cancelRunningCopy(...)` can be isolated from a real database in timeout tests and tested separately against the
+  legacy connection shape.
+
+These seams do not add alternate production behavior. They expose timing boundaries that otherwise cannot be tested
+reliably.
+
+### 15.11 Validation evidence for the reviewed PR
+
+Validation of the reviewed PR produced the following evidence:
+
+| Check | Result | What it proves |
+| --- | --- | --- |
+| Clean core production and test compilation on JDK 17 | Passed | Imports, legacy driver types, checked exceptions, and tests compile from clean bytecode |
+| Five affected Maven tests with `-DforkMode=never` | 5 run, 0 failures | The repaired CI scenario and four new review contracts pass together |
+| Repeated fresh-process runs of the five affected tests | Passed repeatedly | The Mockito ordering correction removed the reproduced intermittent failure |
+| Portable current-branch core regression | 35 run, 0 failures | The affected loader tests and neighboring core tests remain green |
+| Audited `clean verify` with test execution skipped | Passed | Compilation, audit configuration, packaging, and verify lifecycle remain valid |
+| Editor diagnostics and `git diff --check` | Clean | No source diagnostics or patch whitespace errors were introduced |
+
+One pre-existing test was excluded from the portable Windows regression:
+`logFilesInitializeAndWritingTest` assumes `File.separator + "Bad_Location"` is unwritable. That assumption is not
+portable to this machine, where the resulting root path can be writable. It is unrelated to worker lifecycle.
+
+The exact CI command was also attempted locally:
+
+```powershell
+mvn clean verify -B -e -Daudit -Djs.no.sandbox -pl core
+```
+
+On this Windows environment, Surefire 2.21 killed its fork before JUnit discovery. The authoritative output was
+`Tests run: 0`, followed by `The forked VM terminated without properly saying goodbye`. Because no test ran, this is a
+local launcher problem rather than a failing loader assertion. For this pinned Surefire version, the working local
+form is `-DforkMode=never`; `-DforkCount=0` is overridden or ignored by the project configuration.
+
+The editor test runner also reported `0/0` for this JUnit 4 suite and was not counted as validation. Evidence is counted
+only when the runner reports the expected nonzero test count.
+
+### 15.12 Review-to-test traceability
+
+| Review or CI concern | Production/test response | Direct proof |
+| --- | --- | --- |
+| Worker may start after stop completed | Shared lifecycle lock, stop flag, atomic publication/start | `shouldNotStartWorkerWhenStopWinsPublicationRace` leaves the created thread in `NEW` and unpublished state |
+| Disconnect can hang before bounded join | Daemon database-cleanup thread and one shared deadline | `shouldBoundAndQuarantineBlockingDatabaseCleanup` returns promptly while fake disconnect remains blocked |
+| Timed-out worker may call `finish()` | Stop flag check before `finish()` and daemon quarantine | `shouldNotFinishCopyAfterWorkerShutdownTimesOut` verifies `finish()` is never called, even after release |
+| COPY should receive a real cancellation request | Legacy `SConnection`/`VConnection` cancellation path | `shouldCancelRunningCopyThroughVerticaDriverConnection` verifies `cancelCurrentStatement()` |
+| CI abort test stops unexpectedly | Realistic reject list and valid fixture lifecycle | `abortOnErrorTest` passes both continue and terminal-abort cases |
+| CI test is intermittent under worker activity | All spy answers installed before worker startup | Three completed fresh Maven repeats plus final pass are green |
+
+### 15.13 What the final change does and does not guarantee
+
+The final change guarantees that:
+
+- a worker failure closes the pipe and wakes a blocked producer;
+- a stop request cannot lose a race with worker publication and start;
+- forced shutdown does not synchronously wait forever in cancel, rollback, disconnect, or worker join;
+- a worker that observes stop after `execute()` does not call `finish()`;
+- leftover forced-cleanup threads are daemonized and cannot alone keep the JVM alive;
+- all Vertica COPY exceptions use the same cleanup path without matching error-message text.
+
+The final change does not guarantee that:
+
+- an old JDBC driver will immediately honor cancellation or interruption;
+- Java can safely kill a blocked JDBC thread;
+- the server has already released every resource at the exact moment the local deadline expires;
+- healthy end-of-input has a forced timeout;
+- mergeout queue bloat itself is fixed by the plugin. The live mergeout probe documents Vertica behavior; it is not
+  the plugin deadlock reproduction.
+
+### 15.14 Glossary
+
+| Term | Simple meaning |
+| --- | --- |
+| Producer | The PDI step thread that encodes rows and writes bytes into the local pipe |
+| Worker or consumer | The separate thread that reads the pipe and runs Vertica COPY |
+| Race condition | A bug where behavior depends on which thread reaches a point first |
+| Publication | Storing a reference so another thread can see and act on an object |
+| Daemon thread | A thread that is allowed to remain temporarily but cannot keep the JVM alive by itself |
+| Deadline | One end time shared by several waits, rather than a fresh timeout for each wait |
+| Quarantine | Stop depending on a still-alive daemon thread after recording the timeout; do not wait forever or reuse its resources |
+| Test seam | A small overridable method that lets a test control timing without changing production defaults |
+| Mock | A test object that imitates a dependency; it must still return values consistent with the real API |
+| Latch | A test synchronization object that lets one thread announce a precise event and another wait for it |
+
+### 15.15 Final end-to-end failure sequence
+
+In plain language, final forced shutdown now works as follows:
+
+1. The thread that detects failure closes the worker's pipe input so a blocked producer wakes up.
+2. Stop handling publishes one permanent stop request under the same lock used to publish and start workers.
+3. No worker created after that point is allowed to start.
+4. An existing worker is interrupted.
+5. A daemon cleanup thread requests Vertica statement cancellation, rolls back when appropriate, and disconnects.
+6. The PDI stop thread waits only until the shared deadline.
+7. If cleanup finishes, shutdown completes normally with an error status.
+8. If old driver code remains blocked, PDI records the timeout and proceeds without letting that daemon thread hold
+   the JVM open.
+
+This closes the original pipe deadlock and the narrower shutdown races found during review, while preserving the
+separate success path needed to finish and commit valid COPY operations.
