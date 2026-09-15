@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info>
+    <name>pdi20802_connection_loss</name><description>Large active COPY stream for terminating the Vertica container mid-load</description><extended_description/><trans_version/><trans_status>0</trans_status><directory>&#47;</directory><parameters></parameters>
+    <log><read/><write/><input/><output/><update/><rejected/><connection/><table/><step_performance_table/><use_batchid>Y</use_batchid><use_logfield>N</use_logfield><size_limit_lines/></log><maxdate><connection/><table/><field/><offset>0.0</offset><maxdiff>0.0</maxdiff></maxdate>
+    <size_rowset>10000</size_rowset><sleep_time_empty>50</sleep_time_empty><sleep_time_full>50</sleep_time_full><unique_connections>N</unique_connections><feedback_shown>Y</feedback_shown><feedback_size>1000000</feedback_size><using_thread_priorities>Y</using_thread_priorities><shared_objects_file/><capture_step_performance>N</capture_step_performance><step_performance_capturing_delay>1000</step_performance_capturing_delay><dependencies></dependencies><partitionschemas></partitionschemas><slaveservers></slaveservers><clusterschemas></clusterschemas>
+  </info>
+  <notepads></notepads>
+  <connection>
+    <name>VerticaLive</name><server>localhost</server><type>VERTICA5</type><access>Native</access><database>vmart</database><port>5433</port><username>dbadmin</username><password/><servername/><data_tablespace/><index_tablespace/>
+    <attributes><attribute><code>FORCE_IDENTIFIERS_TO_LOWERCASE</code><attribute>N</attribute></attribute><attribute><code>FORCE_IDENTIFIERS_TO_UPPERCASE</code><attribute>N</attribute></attribute><attribute><code>IS_CLUSTERED</code><attribute>N</attribute></attribute><attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute><attribute><code>QUOTE_ALL_FIELDS</code><attribute>N</attribute></attribute><attribute><code>USE_POOLING</code><attribute>N</attribute></attribute></attributes>
+  </connection>
+  <order><hop><from>Generate rows</from><to>Vertica bulk loader</to><enabled>Y</enabled></hop></order>
+  <step>
+    <name>Generate rows</name><type>RowGenerator</type><description/><distribute>Y</distribute><copies>1</copies><partitioning><method>none</method><schema_name/></partitioning>
+    <fields><field><name>ID</name><type>Integer</type><format/><currency/><decimal/><group/><nullif>1</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field><field><name>PAYLOAD</name><type>String</type><format/><currency/><decimal/><group/><nullif>PDI-20802 connection-loss payload 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ</nullif><length>-1</length><precision>-1</precision><set_empty_string>N</set_empty_string></field></fields>
+    <limit>100000000</limit><cluster_schema/><remotesteps><input></input><output></output></remotesteps><GUI><xloc>160</xloc><yloc>160</yloc><draw>Y</draw></GUI>
+  </step>
+  <step>
+    <name>Vertica bulk loader</name><type>VerticaBulkLoader</type><description/><distribute>Y</distribute><copies>1</copies><partitioning><method>none</method><schema_name/></partitioning>
+    <connection>VerticaLive</connection><schema>public</schema><table>pdi20802_large</table><specify_fields>Y</specify_fields><fields><field><column_name>id</column_name><stream_name>ID</stream_name></field><field><column_name>payload</column_name><stream_name>PAYLOAD</stream_name></field></fields>
+    <exceptions_filename/><rejected_data_filename/><abort_on_error>Y</abort_on_error><direct>N</direct><stream_name>PDI-20802-connection-loss</stream_name><cluster_schema/><remotesteps><input></input><output></output></remotesteps><GUI><xloc>360</xloc><yloc>160</yloc><draw>Y</draw></GUI>
+  </step>
+  <step_error_handling></step_error_handling><slave-step-copy-partition-distribution></slave-step-copy-partition-distribution><slave_transformation>N</slave_transformation>
+</transformation>
