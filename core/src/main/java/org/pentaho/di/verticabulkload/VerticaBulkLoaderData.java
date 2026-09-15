@@ -25,20 +25,27 @@ import java.io.IOException;
 import java.io.PipedInputStream;
 import java.util.List;
 
+/**
+ * Per-step connection and encoding state.
+ * The producer owns row encoding; the worker consumes the pipe, with its lifecycle coordinated by the loader.
+ */
 public class VerticaBulkLoaderData extends BaseStepData implements StepDataInterface {
   protected Database db;
   protected DatabaseMeta databaseMeta;
 
   protected StreamEncoder encoder;
 
+  // COPY-column position -> incoming row index; selected fields may be reordered without changing downstream rows.
   protected int[] selectedRowFieldIndices;
 
+  // Downstream row metadata stays separate from the column names/order used by native COPY encoding.
   protected RowMetaInterface outputRowMeta;
   protected RowMetaInterface insertRowMeta;
 
   protected PipedInputStream pipedInputStream;
 
-  protected volatile Thread workerThread;
+  // Published and captured under VerticaBulkLoader's worker lifecycle lock.
+  protected Thread workerThread;
 
   protected List<ColumnSpec> colSpecs;
 
@@ -52,6 +59,10 @@ public class VerticaBulkLoaderData extends BaseStepData implements StepDataInter
     return insertRowMeta;
   }
 
+  /**
+   * Flushes and closes the producer side at healthy EOF, allowing the worker to finish reading.
+   * Flushing may wait for the reader; forced stop instead closes the input through VerticaBulkLoader.
+   */
   public void close() throws IOException {
 
     if ( encoder != null ) {
