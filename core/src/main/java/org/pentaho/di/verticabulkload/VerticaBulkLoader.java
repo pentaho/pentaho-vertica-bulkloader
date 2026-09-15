@@ -14,8 +14,11 @@
 package org.pentaho.di.verticabulkload;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.vertica.core.VConnection;
+import com.vertica.jdbc.SConnection;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
+import com.vertica.support.exceptions.GeneralException;
 import org.apache.commons.dbcp.DelegatingConnection;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.Database;
@@ -43,7 +46,6 @@ import javax.sql.PooledConnection;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -53,6 +55,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.apache.commons.lang.StringUtils.isNotBlank;
@@ -62,10 +65,14 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   private static Class<?> PKG = VerticaBulkLoader.class; // for i18n purposes, needed by Translator2!!
 
   private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat( "yyyy/MM/dd HH:mm:ss" );
+  private static final long WORKER_SHUTDOWN_TIMEOUT_MILLIS = 5000L;
   private VerticaBulkLoaderMeta meta;
   private VerticaBulkLoaderData data;
   private FileOutputStream exceptionLog;
   private FileOutputStream rejectedLog;
+  private final Object workerLifecycleLock = new Object();
+  private volatile boolean workerStopRequested;
+  private volatile Thread databaseCleanupThread;
 
   public VerticaBulkLoader( StepMeta stepMeta, StepDataInterface stepDataInterface, int copyNr, TransMeta transMeta,
       Trans trans ) {
@@ -77,8 +84,16 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     meta = (VerticaBulkLoaderMeta) smi;
     data = (VerticaBulkLoaderData) sdi;
 
+    // getRow() may wait for upstream data, so do not start or resume work after a stop request.
+    if ( isStopped() ) {
+      return false;
+    }
+
     Object[] r = getRow(); // this also waits for a previous step to be
     // finished.
+    if ( isStopped() ) {
+      return false;
+    }
     if ( r == null ) { // no more input to be expected...
 
       try {
@@ -170,6 +185,10 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
     try {
       Object[] outputRowData = writeToOutputStream( r );
+      // The worker can fail while this row is being encoded; stop before publishing more output.
+      if ( isStopped() ) {
+        return false;
+      }
       if ( outputRowData != null ) {
         putRow( data.outputRowMeta, outputRowData ); // in case we want it
         // go further...
@@ -188,7 +207,12 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       setOutputDone(); // signal end to receiver(s)
       return false;
     } catch ( IOException e ) {
-      e.printStackTrace();
+      // Report producer-side failures through PDI so a closed pipe cannot leave the transformation waiting.
+      logError( "I/O Error during row write.", e );
+      setErrors( 1 );
+      stopAll();
+      setOutputDone(); // signal end to receiver(s)
+      return false;
     }
 
     return true;
@@ -324,27 +348,32 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   private void initializeWorker() {
     final String dml = buildCopyStatementSqlString();
+    final PipedInputStream workerInputStream = data.pipedInputStream;
 
-    data.workerThread = Executors.defaultThreadFactory().newThread( new Runnable() {
+    Thread workerThread = createWorkerThread( new Runnable() {
       @Override
       public void run() {
         try {
           VerticaCopyStream stream = createVerticaCopyStream( dml );
           stream.start();
-          stream.addStream( data.pipedInputStream );
+          stream.addStream( workerInputStream );
           setLinesRejected( stream.getRejects().size() );
           stream.execute();
+          if ( workerStopRequested ) {
+            return;
+          }
           long rowsLoaded = stream.finish();
           if ( getLinesOutput() != rowsLoaded ) {
             logMinimal( String.format( "%d records loaded out of %d records sent.", rowsLoaded, getLinesOutput() ) );
           }
-          data.db.disconnect();
-        } catch ( SQLException | IllegalStateException e ) {
-          if ( e.getCause() instanceof InterruptedIOException ) {
+        } catch ( Exception e ) {
+          closePipedInputStream( workerInputStream );
+          if ( isStopped() ) {
             logBasic( "SQL statement interrupted by halt of transformation" );
           } else {
             logError( "SQL Error during statement execution.", e );
             setErrors( 1 );
+            setStopped( true );
             stopAll();
             setOutputDone(); // signal end to receiver(s)
           }
@@ -352,7 +381,16 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       }
     } );
 
-    data.workerThread.start();
+    // A failed worker must not keep the JVM alive after the transformation has stopped.
+    workerThread.setDaemon( true );
+    synchronized ( workerLifecycleLock ) {
+      if ( workerStopRequested || isStopped() ) {
+        closePipedInputStream( workerInputStream );
+        return;
+      }
+      data.workerThread = workerThread;
+      workerThread.start();
+    }
   }
 
   private String buildCopyStatementSqlString() {
@@ -454,7 +492,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       }
       outputRowData = null;
     } catch ( IOException e ) {
-      if ( !data.isStopped() ) {
+      if ( !isStopped() ) {
         throw new KettleException( "I/O Error during row write.", e );
       }
     }
@@ -523,18 +561,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   public void stopRunning( StepMetaInterface stepMetaInterface, StepDataInterface stepDataInterface )
     throws KettleException {
     setStopped( true );
-    if ( data.workerThread != null ) {
-      synchronized ( data.workerThread ) {
-        if ( data.workerThread.isAlive() && !data.workerThread.isInterrupted() ) {
-          try {
-            data.workerThread.interrupt();
-            data.workerThread.join();
-          } catch ( InterruptedException e ) { // Checkstyle:OFF:
-          }
-          // Checkstyle:ONN:
-        }
-      }
-    }
+    stopWorker();
 
     super.stopRunning( stepMetaInterface, stepDataInterface );
   }
@@ -550,26 +577,151 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
     setOutputDone();
 
-    try {
-      if ( getErrors() > 0 ) {
-        data.db.rollback();
+    // Forced cleanup must wake blocked producers; normal EOF must let COPY finish first.
+    if ( isStopped() || getErrors() > 0 ) {
+      stopWorker();
+    } else {
+      waitForWorker();
+      if ( isStopped() || getErrors() > 0 ) {
+        stopWorker();
+      } else if ( data.db != null ) {
+        data.db.disconnect();
       }
-    } catch ( KettleDatabaseException e ) {
-      logError( "Unexpected error rolling back the database connection.", e );
-    }
-
-    if ( data.workerThread != null ) {
-      try {
-        data.workerThread.join();
-      } catch ( InterruptedException e ) { // Checkstyle:OFF:
-      }
-      // Checkstyle:ONN:
-    }
-
-    if ( data.db != null ) {
-      data.db.disconnect();
     }
     super.dispose( smi, sdi );
+  }
+
+  private void closePipedInputStream() {
+    closePipedInputStream( data == null ? null : data.pipedInputStream );
+  }
+
+  private void closePipedInputStream( PipedInputStream inputStream ) {
+    if ( inputStream != null ) {
+      try {
+        inputStream.close();
+      } catch ( IOException e ) {
+        logDebug( "Unable to close the Vertica bulk-load input stream.", e );
+      }
+    }
+  }
+
+  private void stopWorker() {
+    long shutdownTimeoutMillis = workerShutdownTimeoutMillis();
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos( shutdownTimeoutMillis );
+    Thread workerThread;
+    synchronized ( workerLifecycleLock ) {
+      workerStopRequested = true;
+      workerThread = data == null ? null : data.workerThread;
+    }
+
+    // Closing the pipe wakes a producer blocked because the worker stopped reading.
+    closePipedInputStream();
+
+    if ( workerThread != null && workerThread != Thread.currentThread() ) {
+      workerThread.interrupt();
+    }
+
+    Thread cleanupThread = startDatabaseCleanup();
+    waitForThreadUntil( workerThread, deadline );
+    waitForThreadUntil( cleanupThread, deadline );
+
+    if ( isAliveOtherThanCurrentThread( workerThread ) || isAliveOtherThanCurrentThread( cleanupThread ) ) {
+      logError( "Vertica bulk-load cleanup did not stop within " + shutdownTimeoutMillis
+        + " ms; remaining daemon threads are quarantined." );
+      setErrors( 1 );
+    }
+  }
+
+  private Thread startDatabaseCleanup() {
+    synchronized ( workerLifecycleLock ) {
+      if ( databaseCleanupThread == null && data != null && data.db != null ) {
+        final Database database = data.db;
+        databaseCleanupThread = createDatabaseCleanupThread( () -> cleanupDatabase( database ) );
+        databaseCleanupThread.setDaemon( true );
+        databaseCleanupThread.start();
+      }
+      return databaseCleanupThread;
+    }
+  }
+
+  private void cleanupDatabase( Database database ) {
+    try {
+      cancelRunningCopy( database );
+    } catch ( Exception | LinkageError e ) {
+      logDebug( "Unable to cancel the active Vertica COPY operation.", e );
+    }
+
+    try {
+      Connection connection = database.getConnection();
+      if ( getErrors() > 0 && connection != null && !connection.isClosed() ) {
+        database.rollback();
+      }
+    } catch ( KettleDatabaseException | SQLException e ) {
+      logError( "Unexpected error rolling back the database connection.", e );
+    } finally {
+      database.disconnect();
+    }
+  }
+
+  @VisibleForTesting
+  void cancelRunningCopy( Database database ) throws SQLException {
+    VerticaConnection connection = getVerticaConnection( database.getConnection() );
+    if ( connection instanceof SConnection
+      && ( (SConnection) connection ).getDSIConnection() instanceof VConnection ) {
+      try {
+        ( (VConnection) ( (SConnection) connection ).getDSIConnection() ).cancelCurrentStatement();
+      } catch ( GeneralException e ) {
+        throw new SQLException( "Unable to cancel the active Vertica COPY operation.", e );
+      }
+    }
+  }
+
+  private void waitForThreadUntil( Thread thread, long deadline ) {
+    if ( thread == null || thread == Thread.currentThread() || !thread.isAlive() ) {
+      return;
+    }
+
+    long remainingMillis = TimeUnit.NANOSECONDS.toMillis( deadline - System.nanoTime() );
+    if ( remainingMillis <= 0 ) {
+      return;
+    }
+
+    try {
+      thread.join( remainingMillis );
+    } catch ( InterruptedException e ) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private boolean isAliveOtherThanCurrentThread( Thread thread ) {
+    return thread != null && thread != Thread.currentThread() && thread.isAlive();
+  }
+
+  private void waitForWorker() {
+    // Successful EOF requires the COPY worker to finish before the connection is disconnected.
+    Thread workerThread = data == null ? null : data.workerThread;
+    if ( workerThread != null && workerThread != Thread.currentThread() ) {
+      try {
+        workerThread.join();
+      } catch ( InterruptedException e ) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  @VisibleForTesting
+  Thread createWorkerThread( Runnable worker ) {
+    return Executors.defaultThreadFactory().newThread( worker );
+  }
+
+  @VisibleForTesting
+  Thread createDatabaseCleanupThread( Runnable cleanup ) {
+    return Executors.defaultThreadFactory().newThread( cleanup );
+  }
+
+  @VisibleForTesting
+  long workerShutdownTimeoutMillis() {
+    return WORKER_SHUTDOWN_TIMEOUT_MILLIS;
   }
 
   @VisibleForTesting
@@ -584,7 +736,10 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   @VisibleForTesting
   VerticaConnection getVerticaConnection() throws SQLException {
-    Connection conn = data.db.getConnection();
+    return getVerticaConnection( data.db.getConnection() );
+  }
+
+  private VerticaConnection getVerticaConnection( Connection conn ) throws SQLException {
     if ( conn != null ) {
       if ( conn instanceof VerticaConnection ) {
         return (VerticaConnection) conn;

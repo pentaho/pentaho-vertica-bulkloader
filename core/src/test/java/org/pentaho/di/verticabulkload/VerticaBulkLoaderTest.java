@@ -13,6 +13,8 @@
 
 package org.pentaho.di.verticabulkload;
 
+import com.vertica.core.VConnection;
+import com.vertica.jdbc.SConnection;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
 import org.apache.commons.dbcp.DelegatingConnection;
@@ -22,6 +24,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.pentaho.di.core.KettleEnvironment;
+import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleValueException;
@@ -46,7 +49,11 @@ import java.nio.BufferOverflowException;
 import java.nio.channels.WritableByteChannel;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
@@ -58,8 +65,11 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 /**
  * Unit test for {@link VerticaBulkLoader}.
@@ -114,8 +124,11 @@ public class VerticaBulkLoaderTest {
     loaderMeta.setExceptionsFileName( tempException.getAbsolutePath() );
     loaderMeta.setRejectedDataFileName( tempRejected.getAbsolutePath() );
     loader.init( loaderMeta, loaderData );
+    loader.setStopped( false );
 
-    doReturn( mock( VerticaCopyStream.class ) ).when( loader ).createVerticaCopyStream( anyString() );
+    VerticaCopyStream copyStream = mock( VerticaCopyStream.class );
+    when( copyStream.getRejects() ).thenReturn( Collections.emptyList() );
+    doReturn( copyStream ).when( loader ).createVerticaCopyStream( anyString() );
     kettleValueExceptionMsg = "Test Kettle Value Exception";
     kettleValueException = new KettleValueException( kettleValueExceptionMsg, new Exception( "Throwable Exception" ) );
     rowData = new Object[] {"this", "is", "bad", "data" };
@@ -210,6 +223,7 @@ public class VerticaBulkLoaderTest {
     doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
 
     loader.init( loaderMeta, loaderData );
+    loader.setStopped( false );
     when( loader.getRow() ).thenReturn( new String[] { "19 characters------", "4 ch", "7 chara", "8 charac" } );
 
     doAnswer( invocation -> {
@@ -250,7 +264,8 @@ public class VerticaBulkLoaderTest {
       doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
 
       loader.init( loaderMeta, loaderData );
-      when( loader.getRow() ).thenReturn( goodObjectData );
+      loader.setStopped( false );
+      doReturn( goodObjectData, badObjectData, badObjectData ).when( loader ).getRow();
 
       doAnswer( invocation -> {
         List colSpecs = (List) invocation.getArguments()[ 0 ];
@@ -261,15 +276,13 @@ public class VerticaBulkLoaderTest {
       assertTrue( loader.processRow( loaderMeta, loaderData ) );
 
 
-      when( loader.getRow() ).thenReturn( badObjectData );
-      loaderMeta.setAbortOnError( true );
-
-      assertFalse( loader.processRow( loaderMeta, loaderData ) );
-
       loaderMeta.setAbortOnError( false );
       assertTrue( loader.processRow( loaderMeta, loaderData ) );
+
+      loaderMeta.setAbortOnError( true );
+      assertFalse( loader.processRow( loaderMeta, loaderData ) );
     } catch ( Exception ex ) {
-      fail( "No unforeseen exceptions should be thrown" );
+      fail( "No unforeseen exceptions should be thrown: " + ex );
     }
   }
 
@@ -336,6 +349,160 @@ public class VerticaBulkLoaderTest {
     runUndefinedLogFilesTest( "   ", "  \n", "Blanking" );
   }
 
+  @Test( timeout = 3000 )
+  public void shouldNotStartWorkerWhenStopWinsPublicationRace() throws Exception {
+    configureSingleColumnLoader();
+    CountDownLatch workerFactoryEntered = new CountDownLatch( 1 );
+    CountDownLatch releaseWorkerFactory = new CountDownLatch( 1 );
+    AtomicReference<Thread> createdWorker = new AtomicReference<>();
+    AtomicReference<Throwable> processFailure = new AtomicReference<>();
+    doAnswer( invocation -> {
+      Thread worker = new Thread( (Runnable) invocation.getArguments()[ 0 ] );
+      createdWorker.set( worker );
+      workerFactoryEntered.countDown();
+      if ( !releaseWorkerFactory.await( 2, TimeUnit.SECONDS ) ) {
+        throw new IllegalStateException( "Worker factory was not released" );
+      }
+      return worker;
+    } ).when( loader ).createWorkerThread( any( Runnable.class ) );
+
+    Thread producerThread = new Thread( () -> {
+      try {
+        loader.processRow( loaderMeta, loaderData );
+      } catch ( Throwable failure ) {
+        processFailure.set( failure );
+      }
+    } );
+    producerThread.setDaemon( true );
+    producerThread.start();
+    assertTrue( workerFactoryEntered.await( 1, TimeUnit.SECONDS ) );
+
+    loader.stopRunning( loaderMeta, loaderData );
+    releaseWorkerFactory.countDown();
+    producerThread.join( 1000 );
+
+    assertFalse( producerThread.isAlive() );
+    assertTrue( processFailure.get() == null );
+    assertTrue( createdWorker.get() != null );
+    assertTrue( createdWorker.get().getState() == Thread.State.NEW );
+    assertTrue( loaderData.workerThread == null );
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldBoundAndQuarantineBlockingDatabaseCleanup() throws Exception {
+    Database database = mock( Database.class );
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    loader.setStopped( false );
+    CountDownLatch disconnectStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseDisconnect = new CountDownLatch( 1 );
+    AtomicReference<Thread> cleanupThread = new AtomicReference<>();
+    doAnswer( invocation -> null ).when( loader ).cancelRunningCopy( database );
+    doAnswer( invocation -> {
+      Thread thread = new Thread( (Runnable) invocation.getArguments()[ 0 ] );
+      cleanupThread.set( thread );
+      return thread;
+    } ).when( loader ).createDatabaseCleanupThread( any( Runnable.class ) );
+    doAnswer( invocation -> {
+      disconnectStarted.countDown();
+      while ( releaseDisconnect.getCount() > 0 ) {
+        try {
+          releaseDisconnect.await();
+        } catch ( InterruptedException ignored ) {
+          // Simulate a JDBC disconnect that ignores interruption.
+        }
+      }
+      return null;
+    } ).when( database ).disconnect();
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+
+    long startedAt = System.nanoTime();
+    try {
+      loader.stopRunning( loaderMeta, loaderData );
+      long elapsedMillis = TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - startedAt );
+
+      assertTrue( disconnectStarted.getCount() == 0 );
+      assertTrue( elapsedMillis < 1000 );
+      assertTrue( cleanupThread.get().isDaemon() );
+      assertTrue( cleanupThread.get().isAlive() );
+      assertTrue( loader.getErrors() > 0 );
+    } finally {
+      releaseDisconnect.countDown();
+      if ( cleanupThread.get() != null ) {
+        cleanupThread.get().join( 1000 );
+      }
+    }
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldNotFinishCopyAfterWorkerShutdownTimesOut() throws Exception {
+    configureSingleColumnLoader();
+    CountDownLatch executeStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseExecute = new CountDownLatch( 1 );
+    VerticaCopyStream copyStream = mock( VerticaCopyStream.class );
+    when( copyStream.getRejects() ).thenReturn( Collections.emptyList() );
+    doAnswer( invocation -> {
+      executeStarted.countDown();
+      while ( releaseExecute.getCount() > 0 ) {
+        try {
+          releaseExecute.await();
+        } catch ( InterruptedException ignored ) {
+          // Simulate a JDBC COPY operation that ignores interruption.
+        }
+      }
+      return null;
+    } ).when( copyStream ).execute();
+    doReturn( copyStream ).when( loader ).createVerticaCopyStream( anyString() );
+    doAnswer( invocation -> null ).when( loader ).cancelRunningCopy( any( Database.class ) );
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+
+    assertTrue( loader.processRow( loaderMeta, loaderData ) );
+    assertTrue( executeStarted.await( 1, TimeUnit.SECONDS ) );
+    Thread workerThread = loaderData.workerThread;
+
+    try {
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( workerThread.isDaemon() );
+      assertTrue( workerThread.isAlive() );
+      verify( copyStream, never() ).finish();
+    } finally {
+      releaseExecute.countDown();
+      workerThread.join( 1000 );
+    }
+
+    assertFalse( workerThread.isAlive() );
+    verify( copyStream, never() ).finish();
+  }
+
+  @Test
+  public void shouldCancelRunningCopyThroughVerticaDriverConnection() throws Exception {
+    Database database = mock( Database.class );
+    SConnection connection = mock( SConnection.class, withSettings().extraInterfaces( VerticaConnection.class ) );
+    VConnection driverConnection = mock( VConnection.class );
+    when( database.getConnection() ).thenReturn( connection );
+    when( ( (SConnection) connection ).getDSIConnection() ).thenReturn( driverConnection );
+
+    loader.cancelRunningCopy( database );
+
+    verify( driverConnection ).cancelCurrentStatement();
+  }
+
+  @SuppressWarnings( "unchecked" )
+  private void configureSingleColumnLoader() throws Exception {
+    RowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta( new ValueMetaString( "input" ) );
+    loader.setInputRowMeta( rowMeta );
+
+    RowMeta tableMeta = new RowMeta();
+    tableMeta.addValueMeta( getValueMetaString( "target", 10 ) );
+    doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
+    doAnswer( invocation -> new MockChannelStreamEncoder( (List<ColumnSpec>) invocation.getArguments()[ 0 ],
+      (PipedInputStream) invocation.getArguments()[ 1 ] ) ).when( loader ).createStreamEncoder( any(), any() );
+    when( loader.getRow() ).thenReturn( new Object[] { "value" } );
+    loader.setErrors( 0 );
+    loader.setStopped( false );
+  }
+
   private void runUndefinedLogFilesTest( String exceptionsFileName, String rejectedDataFileName, String prefix ) {
     loaderMeta.setExceptionsFileName( exceptionsFileName );
     loaderMeta.setRejectedDataFileName( rejectedDataFileName );
@@ -380,6 +547,7 @@ public class VerticaBulkLoaderTest {
     doReturn( tableMeta ).when( loaderMeta ).getTableRowMetaInterface();
 
     loader.init( loaderMeta, loaderData );
+    loader.setStopped( false );
     when( loader.getRow() ).thenReturn( new String[] { "1", "1", "1", "1", "1", "1", "1" } );
 
     doAnswer( invocation -> {
