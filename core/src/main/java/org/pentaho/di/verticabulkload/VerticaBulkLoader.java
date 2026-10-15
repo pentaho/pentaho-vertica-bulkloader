@@ -81,26 +81,18 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   private VerticaBulkLoaderData data;
   private FileOutputStream exceptionLog;
   private FileOutputStream rejectedLog;
-  // Protect publication/start of owned threads and the first stop deadline, never blocking JDBC calls or joins.
+  // Protect lifecycle claims, thread publication/start and the first stop deadline, never JDBC calls or joins.
   private final Object workerLifecycleLock = new Object();
-  private final AtomicReference<CopyState> copyState = new AtomicReference<>( CopyState.READY );
+  private final AtomicReference<CopyState> copyState = new AtomicReference<>( CopyState.RUNNING );
   // Thread publication and the shutdown deadline are guarded by workerLifecycleLock.
   private Thread databaseCleanupThread;
   private long workerShutdownDeadline;
 
-  /**
-   * Permission to enter each COPY phase, not the worker's Thread.State or the database's transaction status.
-   */
   private enum CopyState {
-    READY,
-    CREATING,
-    STARTING,
-    REGISTERING_INPUT,
-    READING_REJECTS,
     RUNNING,
     // Finalization won its claim. The driver may still be working, or the worker may already have ended.
     FINISHING,
-    // No new phase claim is allowed; previously claimed JDBC work may still be in flight.
+    // No new operation claim is allowed; previously claimed JDBC work may still be in flight.
     STOPPED
   }
 
@@ -402,28 +394,15 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
    */
   private void runCopy( String dml, PipedInputStream workerInputStream ) {
     try {
-      if ( !beginCopyPhase( CopyState.READY, CopyState.CREATING ) ) {
+      if ( !beginCopyOperation( CopyState.RUNNING ) ) {
         return;
       }
       VerticaCopyStream stream = createVerticaCopyStream( dml );
-      if ( !beginCopyPhase( CopyState.CREATING, CopyState.STARTING ) ) {
-        return;
-      }
-      stream.start();
-      if ( !beginCopyPhase( CopyState.STARTING, CopyState.REGISTERING_INPUT ) ) {
-        return;
-      }
-      stream.addStream( workerInputStream );
-      if ( !beginCopyPhase( CopyState.REGISTERING_INPUT, CopyState.READING_REJECTS ) ) {
-        return;
-      }
-      setLinesRejected( stream.getRejects().size() );
-      // The producer supplies bytes concurrently; normal output closure lets this read reach EOF.
-      if ( !beginCopyPhase( CopyState.READING_REJECTS, CopyState.RUNNING ) ) {
-        return;
-      }
-      stream.execute();
-      if ( !beginCopyFinalization() ) {
+      // execute consumes the pipe until the producer closes its output at healthy EOF.
+      if ( !runCopyOperations( stream::start,
+        () -> stream.addStream( workerInputStream ),
+        () -> setLinesRejected( stream.getRejects().size() ),
+        stream::execute ) || !beginCopyOperation( CopyState.FINISHING ) ) {
         return;
       }
       long rowsLoaded = stream.finish();
@@ -449,21 +428,36 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   }
 
   /**
-   * Competes atomically with stop, rather than trusting an earlier "not stopped" observation.
-   * If this claim wins first, finalization is logically in flight and stop can only request cancellation.
-   * Never hold the lifecycle lock across finish(): blocked JDBC must not prevent stop publication.
+   * Claims each operation separately so stop can prevent the next call, not just the entire sequence.
    */
-  @VisibleForTesting
-  boolean beginCopyFinalization() {
-    return beginCopyPhase( CopyState.RUNNING, CopyState.FINISHING );
+  private boolean runCopyOperations( CopyOperation... operations ) throws SQLException {
+    for ( CopyOperation operation : operations ) {
+      if ( !beginCopyOperation( CopyState.RUNNING ) ) {
+        return false;
+      }
+      operation.run();
+    }
+    return true;
+  }
+
+  @FunctionalInterface
+  private interface CopyOperation {
+    void run() throws SQLException;
   }
 
   /**
-   * Stop winning the CAS prevents this phase from starting. A won claim is logically in flight and can only
-   * be cancelled best-effort; no lifecycle lock is held across the potentially blocking driver call.
+   * Claims one call against stop under the lifecycle lock. Blocking JDBC runs only after this lock is released.
+   * An already claimed operation is in flight and can only be cancelled best-effort.
    */
-  private boolean beginCopyPhase( CopyState expected, CopyState next ) {
-    return !isStopped() && copyState.compareAndSet( expected, next );
+  private boolean beginCopyOperation( CopyState nextState ) {
+    boolean stopped = isStopped();
+    synchronized ( workerLifecycleLock ) {
+      if ( stopped || copyState.get() != CopyState.RUNNING ) {
+        return false;
+      }
+      copyState.set( nextState );
+      return true;
+    }
   }
 
   private boolean isWorkerStopRequested() {
@@ -655,21 +649,15 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
     setOutputDone();
 
-    // Forced cleanup must wake blocked producers; normal EOF must let COPY finish first.
+    // Healthy disposal waits for COPY, then its single disconnect owner. Stop switches either wait to bounded cleanup.
+    if ( !isWorkerStopRequested() && getErrors() == 0 ) {
+      waitForWorker();
+    }
+    if ( !isWorkerStopRequested() && getErrors() == 0 ) {
+      waitForCompletion( startDatabaseCleanup(), "database cleanup" );
+    }
     if ( isWorkerStopRequested() || getErrors() > 0 ) {
       stopWorker();
-    } else {
-      waitForWorker();
-      // The cleanup claim rechecks stop under the lifecycle lock; this observation alone cannot grant ownership.
-      if ( isWorkerStopRequested() || getErrors() > 0 ) {
-        stopWorker();
-      } else {
-        Thread cleanupThread = startDatabaseCleanup();
-        waitForCompletion( cleanupThread, "database cleanup" );
-        if ( isWorkerStopRequested() || getErrors() > 0 ) {
-          stopWorker();
-        }
-      }
     }
     super.dispose( smi, sdi );
   }
@@ -689,7 +677,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   }
 
   /**
-   * Prevents new COPY phase claims and releases the pipe, then bounds waits for the owned threads.
+   * Prevents new COPY operation claims and releases the pipe, then bounds waits for the owned threads.
    * JDBC cleanup runs separately because cancel, rollback, and disconnect can each block.
    * Repeated stop/dispose calls reuse the first deadline rather than granting another timeout.
    */
@@ -698,7 +686,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     Thread workerThread;
     long deadline;
     synchronized ( workerLifecycleLock ) {
-      // The same atomic state decides whether stop or the worker's next COPY phase wins.
+      // The same lock serializes stop with the worker's next COPY claim.
       if ( copyState.getAndSet( CopyState.STOPPED ) != CopyState.STOPPED ) {
         workerShutdownDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos( shutdownTimeoutMillis );
       }

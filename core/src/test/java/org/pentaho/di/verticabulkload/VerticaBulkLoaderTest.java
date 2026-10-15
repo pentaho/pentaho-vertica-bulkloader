@@ -964,8 +964,8 @@ public class VerticaBulkLoaderTest {
     doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
     doAnswer( invocation -> {
       enteringFinalization.set( true );
-      return invocation.callRealMethod();
-    } ).when( loader ).beginCopyFinalization();
+      return null;
+    } ).when( copyStream ).execute();
     doAnswer( invocation -> {
       boolean stopped = (boolean) invocation.callRealMethod();
       if ( enteringFinalization.get() && Thread.currentThread() == loaderData.workerThread && !stopped ) {
