@@ -772,6 +772,66 @@ public class VerticaBulkLoaderTest {
   }
 
   @Test( timeout = 3000 )
+  public void shouldNotCreateCopyStreamWhenStopWinsStartupTransition() throws Exception {
+    configureSingleColumnLoader();
+    Database database = mock( Database.class );
+    doReturn( loaderMeta.getDatabaseMeta() ).when( database ).getDatabaseMeta();
+    when( database.getConnection() ).thenReturn( mock( VerticaConnection.class ) );
+    loaderData.db = database;
+    CountDownLatch startupChecked = new CountDownLatch( 1 );
+    CountDownLatch releaseStartup = new CountDownLatch( 1 );
+    AtomicBoolean pausedStartup = new AtomicBoolean();
+    doReturn( new Object[] { "value" } ).when( loader ).getRow();
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    doAnswer( invocation -> {
+      boolean stopped = (boolean) invocation.callRealMethod();
+      if ( Thread.currentThread() == loaderData.workerThread && !stopped
+        && pausedStartup.compareAndSet( false, true ) ) {
+        startupChecked.countDown();
+        awaitIgnoringInterrupts( releaseStartup );
+      }
+      return stopped;
+    } ).when( loader ).isStopped();
+
+    assertTrue( loader.processRow( loaderMeta, loaderData ) );
+    try {
+      assertTrue( startupChecked.await( 1, TimeUnit.SECONDS ) );
+      loader.stopRunning( loaderMeta, loaderData );
+      verify( database ).rollback();
+      verify( database ).disconnect();
+    } finally {
+      releaseStartup.countDown();
+      loaderData.workerThread.join( 1000 );
+    }
+
+    assertFalse( loaderData.workerThread.isAlive() );
+    verify( loader, never() ).createVerticaCopyStream( anyString() );
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldNotStartCopyAfterStopDuringStreamCreation() throws Exception {
+    VerticaCopyStream stream = stopDuringCopyStartup( CopyStage.CREATE );
+    verify( stream, never() ).start();
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldNotRegisterInputAfterStopDuringCopyStart() throws Exception {
+    VerticaCopyStream stream = stopDuringCopyStartup( CopyStage.START );
+    verify( stream, never() ).addStream( any() );
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldNotReadRejectsAfterStopDuringInputRegistration() throws Exception {
+    VerticaCopyStream stream = stopDuringCopyStartup( CopyStage.ADD_STREAM );
+    verify( stream, never() ).getRejects();
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldNotExecuteCopyAfterStopDuringRejectLookup() throws Exception {
+    stopDuringCopyStartup( CopyStage.GET_REJECTS );
+  }
+
+  @Test( timeout = 3000 )
   public void shouldNotStartWorkerWhenStopWinsPublicationRace() throws Exception {
     configureSingleColumnLoader();
     CountDownLatch workerFactoryEntered = new CountDownLatch( 1 );
@@ -1155,6 +1215,70 @@ public class VerticaBulkLoaderTest {
     assertFalse( loaderData.workerThread.isAlive() );
     assertTrue( loader.getErrors() > 0 );
     assertTrue( loader.isStopped() );
+  }
+
+  private VerticaCopyStream stopDuringCopyStartup( CopyStage stage ) throws Exception {
+    configureSingleColumnLoader();
+    VerticaCopyStream stream = mock( VerticaCopyStream.class );
+    when( stream.getRejects() ).thenReturn( Collections.emptyList() );
+    doReturn( stream ).when( loader ).createVerticaCopyStream( anyString() );
+    doReturn( new Object[] { "value" } ).when( loader ).getRow();
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    CountDownLatch startupEntered = new CountDownLatch( 1 );
+    CountDownLatch releaseStartup = new CountDownLatch( 1 );
+    Runnable pauseStartup = () -> {
+      startupEntered.countDown();
+      awaitIgnoringInterrupts( releaseStartup );
+    };
+    switch ( stage ) {
+      case CREATE:
+        doAnswer( invocation -> {
+          pauseStartup.run();
+          return stream;
+        } ).when( loader ).createVerticaCopyStream( anyString() );
+        break;
+      case START:
+        doAnswer( invocation -> {
+          pauseStartup.run();
+          return null;
+        } ).when( stream ).start();
+        break;
+      case ADD_STREAM:
+        doAnswer( invocation -> {
+          pauseStartup.run();
+          return null;
+        } ).when( stream ).addStream( any() );
+        break;
+      case GET_REJECTS:
+        doAnswer( invocation -> {
+          pauseStartup.run();
+          return Collections.emptyList();
+        } ).when( stream ).getRejects();
+        break;
+      default:
+        throw new IllegalArgumentException( "Not a COPY startup stage: " + stage );
+    }
+
+    assertTrue( loader.processRow( loaderMeta, loaderData ) );
+    Thread workerThread = loaderData.workerThread;
+    try {
+      assertTrue( startupEntered.await( 1, TimeUnit.SECONDS ) );
+      long startedAt = System.nanoTime();
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - startedAt ) < 1000 );
+      assertTrue( workerThread.isDaemon() );
+      assertTrue( workerThread.isAlive() );
+      assertTrue( loader.getErrors() > 0 );
+      verify( loader ).cancelRunningCopy( loaderData.db );
+    } finally {
+      releaseStartup.countDown();
+      workerThread.join( 1000 );
+    }
+
+    assertFalse( workerThread.isAlive() );
+    verify( stream, never() ).execute();
+    verify( stream, never() ).finish();
+    return stream;
   }
 
   private void assertCopyStageFailureStopsStep( CopyStage stage, Exception failure ) throws Exception {

@@ -83,20 +83,24 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   private FileOutputStream rejectedLog;
   // Protect publication/start of owned threads and the first stop deadline, never blocking JDBC calls or joins.
   private final Object workerLifecycleLock = new Object();
-  private final AtomicReference<CopyState> copyState = new AtomicReference<>( CopyState.RUNNING );
+  private final AtomicReference<CopyState> copyState = new AtomicReference<>( CopyState.READY );
   // Thread publication and the shutdown deadline are guarded by workerLifecycleLock.
   private Thread databaseCleanupThread;
   private long workerShutdownDeadline;
 
   /**
-   * Permission to finalize COPY, not the worker's Thread.State or the database's transaction status.
+   * Permission to enter each COPY phase, not the worker's Thread.State or the database's transaction status.
    */
   private enum CopyState {
-    // Also covers initialization before the worker starts; finalization has not been claimed.
+    READY,
+    CREATING,
+    STARTING,
+    REGISTERING_INPUT,
+    READING_REJECTS,
     RUNNING,
     // Finalization won its claim. The driver may still be working, or the worker may already have ended.
     FINISHING,
-    // No new finalization claim is allowed; previously claimed JDBC work may still be in flight.
+    // No new phase claim is allowed; previously claimed JDBC work may still be in flight.
     STOPPED
   }
 
@@ -398,14 +402,26 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
    */
   private void runCopy( String dml, PipedInputStream workerInputStream ) {
     try {
-      if ( isWorkerStopRequested() ) {
+      if ( !beginCopyPhase( CopyState.READY, CopyState.CREATING ) ) {
         return;
       }
       VerticaCopyStream stream = createVerticaCopyStream( dml );
+      if ( !beginCopyPhase( CopyState.CREATING, CopyState.STARTING ) ) {
+        return;
+      }
       stream.start();
+      if ( !beginCopyPhase( CopyState.STARTING, CopyState.REGISTERING_INPUT ) ) {
+        return;
+      }
       stream.addStream( workerInputStream );
+      if ( !beginCopyPhase( CopyState.REGISTERING_INPUT, CopyState.READING_REJECTS ) ) {
+        return;
+      }
       setLinesRejected( stream.getRejects().size() );
       // The producer supplies bytes concurrently; normal output closure lets this read reach EOF.
+      if ( !beginCopyPhase( CopyState.READING_REJECTS, CopyState.RUNNING ) ) {
+        return;
+      }
       stream.execute();
       if ( !beginCopyFinalization() ) {
         return;
@@ -439,7 +455,15 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
    */
   @VisibleForTesting
   boolean beginCopyFinalization() {
-    return !isStopped() && copyState.compareAndSet( CopyState.RUNNING, CopyState.FINISHING );
+    return beginCopyPhase( CopyState.RUNNING, CopyState.FINISHING );
+  }
+
+  /**
+   * Stop winning the CAS prevents this phase from starting. A won claim is logically in flight and can only
+   * be cancelled best-effort; no lifecycle lock is held across the potentially blocking driver call.
+   */
+  private boolean beginCopyPhase( CopyState expected, CopyState next ) {
+    return !isStopped() && copyState.compareAndSet( expected, next );
   }
 
   private boolean isWorkerStopRequested() {
@@ -665,7 +689,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   }
 
   /**
-   * Prevents new finalization claims and releases the pipe, then bounds waits for the owned threads.
+   * Prevents new COPY phase claims and releases the pipe, then bounds waits for the owned threads.
    * JDBC cleanup runs separately because cancel, rollback, and disconnect can each block.
    * Repeated stop/dispose calls reuse the first deadline rather than granting another timeout.
    */
@@ -674,7 +698,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     Thread workerThread;
     long deadline;
     synchronized ( workerLifecycleLock ) {
-      // The same atomic state decides whether stop or beginCopyFinalization() wins.
+      // The same atomic state decides whether stop or the worker's next COPY phase wins.
       if ( copyState.getAndSet( CopyState.STOPPED ) != CopyState.STOPPED ) {
         workerShutdownDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos( shutdownTimeoutMillis );
       }
