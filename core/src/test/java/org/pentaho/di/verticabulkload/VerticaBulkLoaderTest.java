@@ -55,6 +55,7 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -62,16 +63,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.sql.PooledConnection;
 
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.matchers.JUnitMatchers.containsString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -602,6 +603,114 @@ public class VerticaBulkLoaderTest {
     loader.dispose( loaderMeta, loaderData );
 
     verify( database, never() ).rollback();
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldNotDisconnectNormallyWhenStopClaimsCleanupAfterCompletionCheck() throws Exception {
+    Database database = mock( Database.class );
+    when( database.getConnection() ).thenReturn( mock( VerticaConnection.class ) );
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    CountDownLatch completionChecked = new CountDownLatch( 1 );
+    CountDownLatch releaseCompletionCheck = new CountDownLatch( 1 );
+    CountDownLatch rollbackStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseRollback = new CountDownLatch( 1 );
+    CountDownLatch disconnectCalled = new CountDownLatch( 1 );
+    FutureTask<Void> disposal = new FutureTask<>( () -> {
+      loader.dispose( loaderMeta, loaderData );
+      return null;
+    } );
+    Thread disposeThread = new Thread( disposal );
+    disposeThread.setDaemon( true );
+    AtomicInteger errorReads = new AtomicInteger();
+    doAnswer( invocation -> {
+      long errors = (long) invocation.callRealMethod();
+      if ( Thread.currentThread() == disposeThread && errorReads.incrementAndGet() == 2 ) {
+        // Keep the successful check's result stale while stop claims the connection.
+        completionChecked.countDown();
+        awaitIgnoringInterrupts( releaseCompletionCheck );
+      }
+      return errors;
+    } ).when( loader ).getErrors();
+    doAnswer( invocation -> {
+      rollbackStarted.countDown();
+      awaitIgnoringInterrupts( releaseRollback );
+      return null;
+    } ).when( database ).rollback();
+    doAnswer( invocation -> {
+      disconnectCalled.countDown();
+      return null;
+    } ).when( database ).disconnect();
+
+    disposeThread.start();
+    try {
+      assertTrue( completionChecked.await( 1, TimeUnit.SECONDS ) );
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( rollbackStarted.await( 1, TimeUnit.SECONDS ) );
+      releaseCompletionCheck.countDown();
+      disposal.get( 1, TimeUnit.SECONDS );
+
+      assertEquals( "Disconnect must not race with the cleanup owner's rollback", 1L,
+        disconnectCalled.getCount() );
+    } finally {
+      releaseCompletionCheck.countDown();
+      releaseRollback.countDown();
+      disposeThread.join( 1000 );
+    }
+    assertTrue( disconnectCalled.await( 1, TimeUnit.SECONDS ) );
+    verify( database, times( 1 ) ).rollback();
+    verify( database, times( 1 ) ).disconnect();
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldReuseNormalCleanupOwnerWhenStopArrivesDuringDisconnect() throws Exception {
+    Database database = mock( Database.class );
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    CountDownLatch disconnectStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseDisconnect = new CountDownLatch( 1 );
+    CountDownLatch disposalFinished = new CountDownLatch( 1 );
+    AtomicReference<Thread> cleanupThread = new AtomicReference<>();
+    doAnswer( invocation -> {
+      cleanupThread.set( Thread.currentThread() );
+      disconnectStarted.countDown();
+      awaitIgnoringInterrupts( releaseDisconnect );
+      return null;
+    } ).when( database ).disconnect();
+    FutureTask<Void> disposal = new FutureTask<>( () -> {
+      loader.dispose( loaderMeta, loaderData );
+      disposalFinished.countDown();
+      return null;
+    } );
+    Thread disposeThread = new Thread( disposal );
+    disposeThread.setDaemon( true );
+    disposeThread.start();
+
+    try {
+      assertTrue( disconnectStarted.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( cleanupThread.get().isDaemon() );
+      assertFalse( disposalFinished.await( 200, TimeUnit.MILLISECONDS ) );
+
+      long startedAt = System.nanoTime();
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - startedAt ) < 1000 );
+      disposal.get( 1, TimeUnit.SECONDS );
+
+      assertTrue( cleanupThread.get().isAlive() );
+      assertTrue( loader.getErrors() > 0 );
+      verify( loader, times( 1 ) ).createDatabaseCleanupThread( any( Runnable.class ) );
+      verify( loader, never() ).cancelRunningCopy( database );
+      verify( database, never() ).rollback();
+    } finally {
+      releaseDisconnect.countDown();
+      if ( cleanupThread.get() != null ) {
+        cleanupThread.get().join( 1000 );
+      }
+      disposeThread.join( 1000 );
+    }
+    verify( database, times( 1 ) ).disconnect();
   }
 
   @Test( timeout = 5000 )

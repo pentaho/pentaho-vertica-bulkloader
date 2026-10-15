@@ -394,7 +394,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   /**
    * Runs the COPY sequence on the consumer thread, including failures before any bytes are read.
-   * Connection cleanup belongs to normal disposal or the forced-cleanup thread, not this worker.
+   * Connection cleanup belongs to the single database cleanup thread, not this worker.
    */
   private void runCopy( String dml, PipedInputStream workerInputStream ) {
     try {
@@ -636,11 +636,15 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       stopWorker();
     } else {
       waitForWorker();
-      // Stop or COPY failure can arrive while normal disposal is waiting; re-evaluate before disconnecting.
+      // The cleanup claim rechecks stop under the lifecycle lock; this observation alone cannot grant ownership.
       if ( isWorkerStopRequested() || getErrors() > 0 ) {
         stopWorker();
-      } else if ( data.db != null ) {
-        data.db.disconnect();
+      } else {
+        Thread cleanupThread = startDatabaseCleanup();
+        waitForCompletion( cleanupThread, "database cleanup" );
+        if ( isWorkerStopRequested() || getErrors() > 0 ) {
+          stopWorker();
+        }
       }
     }
     super.dispose( smi, sdi );
@@ -699,13 +703,21 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   /**
    * Starts at most one cleanup owner, even when stop and disposal overlap.
+   * Stop winning the claim requires rollback; normal cleanup winning means stop must wait for that same owner.
    * The lock only publishes/starts the thread; the blocking JDBC work runs outside it.
    */
   private Thread startDatabaseCleanup() {
     synchronized ( workerLifecycleLock ) {
       if ( databaseCleanupThread == null && data != null && data.db != null ) {
         final Database database = data.db;
-        databaseCleanupThread = createDatabaseCleanupThread( () -> cleanupDatabase( database ) );
+        final boolean forcedCleanup = isWorkerStopRequested() || getErrors() > 0;
+        databaseCleanupThread = createDatabaseCleanupThread( () -> {
+          if ( forcedCleanup ) {
+            cleanupDatabase( database );
+          } else {
+            database.disconnect();
+          }
+        } );
         databaseCleanupThread.setDaemon( true );
         databaseCleanupThread.setUncaughtExceptionHandler( ( thread, failure ) -> {
           logError( "Unexpected error during Vertica bulk-load database cleanup.", failure );
@@ -796,13 +808,17 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     synchronized ( workerLifecycleLock ) {
       workerThread = data == null ? null : data.workerThread;
     }
+    waitForCompletion( workerThread, "COPY" );
+  }
+
+  private void waitForCompletion( Thread thread, String operation ) {
     try {
-      while ( isAliveOtherThanCurrentThread( workerThread ) && !isWorkerStopRequested() && getErrors() == 0 ) {
-        workerThread.join( 100L );
+      while ( isAliveOtherThanCurrentThread( thread ) && !isWorkerStopRequested() && getErrors() == 0 ) {
+        thread.join( 100L );
       }
     } catch ( InterruptedException e ) {
       Thread.currentThread().interrupt();
-      logError( "Interrupted while waiting for Vertica COPY completion.", e );
+      logError( "Interrupted while waiting for Vertica " + operation + " completion.", e );
       setErrors( 1 );
       setStopped( true );
     }
