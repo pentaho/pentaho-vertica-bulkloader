@@ -414,14 +414,20 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         logMinimal( String.format( "%d records loaded out of %d records sent.", rowsLoaded, getLinesOutput() ) );
       }
     } catch ( Exception e ) {
+      boolean wasStopped;
+      synchronized ( workerLifecycleLock ) {
+        wasStopped = isWorkerStopRequested();
+        if ( !wasStopped ) {
+          setErrors( 1 );
+          setStopped( true );
+        }
+      }
       // Release the local handoff before stopAll(): a producer may already be blocked inside a pipe write.
       closePipedInputStream( workerInputStream );
-      if ( isWorkerStopRequested() ) {
+      if ( wasStopped ) {
         logBasic( "SQL statement interrupted by halt of transformation" );
       } else {
         logError( "SQL Error during statement execution.", e );
-        setErrors( 1 );
-        setStopped( true );
         stopAll();
         setOutputDone();
       }
@@ -680,6 +686,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   /**
    * Prevents new COPY operation claims and releases the pipe, then bounds waits for the owned threads.
    * JDBC cleanup runs separately because cancel, rollback, and disconnect can each block.
+   * A timed-out connection stays leased until the worker and cancellation have exited.
    * Repeated stop/dispose calls reuse the first deadline rather than granting another timeout.
    */
   private void stopWorker() {
@@ -703,6 +710,9 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       workerThread.interrupt();
     }
     Thread cleanupThread = startDatabaseCleanup();
+    if ( workerThread == Thread.currentThread() ) {
+      return;
+    }
     // Both waits spend the remaining part of one budget; cleanup does not receive a fresh timeout.
     waitForThreadUntil( workerThread, deadline );
     waitForThreadUntil( cleanupThread, deadline );
@@ -724,9 +734,13 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       if ( databaseCleanupThread == null && data != null && data.db != null ) {
         final Database database = data.db;
         final boolean forcedCleanup = isWorkerStopRequested() || getErrors() > 0;
+        final Thread workerThread = data.workerThread;
+        final long deadline = workerShutdownDeadline == 0
+          ? System.nanoTime() + TimeUnit.MILLISECONDS.toNanos( workerShutdownTimeoutMillis() )
+          : workerShutdownDeadline;
         databaseCleanupThread = createDatabaseCleanupThread( () -> {
           if ( forcedCleanup ) {
-            cleanupDatabase( database );
+            cleanupDatabase( database, workerThread, deadline );
           } else {
             database.disconnect();
           }
@@ -742,15 +756,45 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     }
   }
 
-  private void cleanupDatabase( Database database ) {
+  private void cleanupDatabase( Database database, Thread workerThread, long deadline ) {
+    Thread cancellation = new Thread( () -> {
+      try {
+        cancelRunningCopy( database );
+      } catch ( SQLException | IllegalStateException e ) {
+        logError( "Unable to cancel the active Vertica COPY operation.", e );
+        setErrors( 1 );
+      }
+    }, "Vertica COPY cancellation" );
+    cancellation.setUncaughtExceptionHandler( Thread.currentThread().getUncaughtExceptionHandler() );
+    cancellation.start();
+
+    waitForThreadUntil( workerThread, deadline );
+    Connection invalidatedConnection = isAliveOtherThanCurrentThread( workerThread ) ? database.getConnection() : null;
+    if ( invalidatedConnection != null ) {
+      try {
+        getVerticaConnection( invalidatedConnection ).close();
+      } catch ( SQLException | IllegalStateException e ) {
+        logError( "Unable to invalidate the active Vertica connection.", e );
+        setErrors( 1 );
+      }
+    }
     try {
-      cancelRunningCopy( database );
-    } catch ( SQLException | IllegalStateException e ) {
-      logError( "Unable to cancel the active Vertica COPY operation.", e );
+      // Neither COPY nor cancellation may keep using a connection returned to its pool.
+      if ( workerThread != null ) {
+        workerThread.join();
+      }
+      cancellation.join();
+      // Database.disconnect() may skip a pooled wrapper whose physical connection is already closed.
+      try ( invalidatedConnection ) {
+        rollbackAndDisconnect( database );
+      }
+    } catch ( InterruptedException e ) {
+      Thread.currentThread().interrupt();
+      logError( "Interrupted while waiting to release the Vertica connection.", e );
       setErrors( 1 );
-    } finally {
-      // Cancellation failure must not prevent the remaining cleanup attempts.
-      rollbackAndDisconnect( database );
+    } catch ( SQLException e ) {
+      logError( "Unable to release the invalidated Vertica connection.", e );
+      setErrors( 1 );
     }
   }
 
@@ -788,7 +832,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         throw new SQLException( "Unable to cancel the active Vertica COPY operation.", e );
       }
     } else {
-      logDebug( "The Vertica connection does not expose legacy COPY cancellation; disconnecting instead." );
+      logDebug( "The Vertica connection does not expose legacy COPY cancellation; timeout will close it instead." );
     }
   }
 

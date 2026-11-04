@@ -798,8 +798,8 @@ public class VerticaBulkLoaderTest {
     try {
       assertTrue( startupChecked.await( 1, TimeUnit.SECONDS ) );
       loader.stopRunning( loaderMeta, loaderData );
-      verify( database ).rollback();
-      verify( database ).disconnect();
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
     } finally {
       releaseStartup.countDown();
       loaderData.workerThread.join( 1000 );
