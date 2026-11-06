@@ -26,6 +26,15 @@ on:
         type: string
         required: false
         default: ''
+      jdbc_file:
+        description: Optional JDBC JAR path accessible inside the runner container
+        type: string
+        required: false
+        default: ''
+      test_md5_auth:
+        description: Use MD5 for the disposable test user (required by the default JDBC 6 driver)
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       source:
@@ -44,6 +53,14 @@ on:
         description: Series for latest; empty uses checkout release family
         type: string
         default: ''
+      jdbc_file:
+        description: Optional JDBC JAR path accessible inside the runner container
+        type: string
+        default: ''
+      test_md5_auth:
+        description: Use MD5 for the disposable test user
+        type: boolean
+        default: true
     secrets:
       PENTAHO_CICD_ONE_USER:
         required: true
@@ -75,8 +92,7 @@ jobs:
         password: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
       volumes:
         - /home/runner/caches/pentaho/.m2/repository:/m2_local_cache/
-        # Optional operator overrides; the checkout supplies license configuration,
-        # and the PDI image normally supplies JDBC. Neither is downloaded.
+        # Optional operator files; the checkout supplies license configuration and JDBC 6.
         - /home/runner/caches/pentaho/vertica-bulkloader-conf:/it-conf:ro
     defaults:
       run:
@@ -88,6 +104,8 @@ jobs:
       VERTICA_IT_PDI_IMAGE: ${{ inputs.pdi_image }}
       VERTICA_IT_BUILD: ${{ inputs.build }}
       VERTICA_IT_SERIES: ${{ inputs.series }}
+      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file }}
+      VERTICA_IT_TEST_MD5_AUTH: ${{ inputs.test_md5_auth }}
       # Lowercase Docker-safe identifier shared by verify and the always-run Fabric8 stop.
       VERTICA_IT_RUN_ID: vbl-${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -117,6 +135,10 @@ jobs:
           [[ -z "$VERTICA_IT_SERIES" || "$VERTICA_IT_SERIES" =~ ^[0-9]+\.[0-9]+(\.[0-9]+\.[0-9]+)?$ ]] || {
             echo '::error::series must be empty or match A.B or A.B.C.D'; exit 1;
           }
+          if [[ -n "$VERTICA_IT_JDBC_FILE" && ( ! -f "$VERTICA_IT_JDBC_FILE" || ! -r "$VERTICA_IT_JDBC_FILE" || ! -s "$VERTICA_IT_JDBC_FILE" ) ]]; then
+            echo '::error::jdbc_file must name a readable, nonempty JAR in the runner container.'
+            exit 1
+          fi
           umask 077
           mkdir -p integration-test/conf
           for file in .elmLicInfo.plt vertica-jdbc.jar; do
@@ -207,7 +229,9 @@ jobs:
             "-Dvertica.it.run-id=$VERTICA_IT_RUN_ID"
             "-Dvertica.it.pdi-build=$VERTICA_IT_RESOLVED_BUILD"
             "-Dvertica.it.pdi-archive=$VERTICA_IT_PDI_ARCHIVE"
+            "-Dvertica.it.test-md5-auth=${VERTICA_IT_TEST_MD5_AUTH:-true}"
           )
+          if [[ -n "$VERTICA_IT_JDBC_FILE" ]]; then args+=("-Dvertica.it.jdbc-file=$VERTICA_IT_JDBC_FILE"); fi
           mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
             -Dmaven.repo.local=/m2_local_cache/ \
             -f integration-test/pom.xml verify -DrunIntegrationTests "${args[@]}"

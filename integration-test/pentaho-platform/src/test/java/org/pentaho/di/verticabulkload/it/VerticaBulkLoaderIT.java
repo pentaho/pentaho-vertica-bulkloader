@@ -78,6 +78,9 @@ class VerticaBulkLoaderIT {
       + "GRANT USAGE ON SCHEMA public TO qa_loader; "
       + "DROP TABLE IF EXISTS public.qa_audit CASCADE; "
       + "CREATE TABLE public.qa_audit (marker VARCHAR(100));" );
+    if ( Boolean.getBoolean( "vertica.it.test-md5-auth" ) ) {
+      sql( "ALTER USER qa_loader SECURITY_ALGORITHM 'MD5' IDENTIFIED BY 'qa_ephemeral'" );
+    }
   }
 
   @BeforeEach
