@@ -1065,6 +1065,129 @@ public class VerticaBulkLoaderTest {
     assertEquals( 1, loader.getErrors() );
   }
 
+  @Test( timeout = 5000 )
+  public void shouldRetainPooledLeaseWhenWorkerExitsBeforeCancellation() throws Exception {
+    assertPooledLeaseHeldUntilThreadsExit( true, false );
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldRetainPooledLeaseWhenCancellationExitsBeforeWorker() throws Exception {
+    assertPooledLeaseHeldUntilThreadsExit( false, true );
+  }
+
+  private void assertPooledLeaseHeldUntilThreadsExit( boolean workerExitsFirst, boolean wrapperReportsClosed )
+    throws Exception {
+    Database database = mock( Database.class );
+    DelegatingConnection wrapper = mock( DelegatingConnection.class );
+    VerticaConnection physical = mock( VerticaConnection.class );
+    when( database.getConnection() ).thenReturn( wrapper );
+    when( wrapper.getInnermostDelegate() ).thenReturn( physical );
+    when( wrapper.isClosed() ).thenReturn( wrapperReportsClosed );
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+
+    CountDownLatch workerStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseWorker = new CountDownLatch( 1 );
+    CountDownLatch cancellationStarted = new CountDownLatch( 1 );
+    CountDownLatch cancellationFinished = new CountDownLatch( 1 );
+    CountDownLatch releaseCancellation = new CountDownLatch( 1 );
+    CountDownLatch physicalClosed = new CountDownLatch( 1 );
+    CountDownLatch cleanupAction = new CountDownLatch( 1 );
+    AtomicReference<Thread> cleanupThread = new AtomicReference<>();
+    Thread worker = new Thread( () -> {
+      workerStarted.countDown();
+      awaitIgnoringInterrupts( releaseWorker );
+    } );
+    worker.setDaemon( true );
+    loaderData.workerThread = worker;
+    doAnswer( invocation -> {
+      Thread thread = new Thread( (Runnable) invocation.getArgument( 0 ) );
+      cleanupThread.set( thread );
+      return thread;
+    } ).when( loader ).createDatabaseCleanupThread( any( Runnable.class ) );
+    doAnswer( invocation -> {
+      cancellationStarted.countDown();
+      try {
+        awaitIgnoringInterrupts( releaseCancellation );
+      } finally {
+        cancellationFinished.countDown();
+      }
+      return null;
+    } ).when( loader ).cancelRunningCopy( database );
+    doAnswer( invocation -> {
+      physicalClosed.countDown();
+      return null;
+    } ).when( physical ).close();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( wrapper ).close();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( database ).rollback();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( database ).disconnect();
+
+    worker.start();
+    try {
+      assertTrue( workerStarted.await( 1, TimeUnit.SECONDS ) );
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( cancellationStarted.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( physicalClosed.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( worker.isAlive() );
+      verify( physical, times( 1 ) ).close();
+      verify( wrapper, never() ).close();
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
+
+      if ( workerExitsFirst ) {
+        releaseWorker.countDown();
+        worker.join( 1000 );
+        assertFalse( worker.isAlive() );
+      } else {
+        releaseCancellation.countDown();
+        assertTrue( cancellationFinished.await( 1, TimeUnit.SECONDS ) );
+        assertTrue( worker.isAlive() );
+      }
+      assertFalse( cleanupAction.await( 200, TimeUnit.MILLISECONDS ) );
+      verify( wrapper, never() ).close();
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
+
+      releaseWorker.countDown();
+      releaseCancellation.countDown();
+      worker.join( 1000 );
+      assertNotNull( cleanupThread.get() );
+      cleanupThread.get().join( 1000 );
+      assertFalse( worker.isAlive() );
+      assertFalse( cleanupThread.get().isAlive() );
+      verify( wrapper, times( 1 ) ).close();
+      verify( database, times( 1 ) ).disconnect();
+      if ( wrapperReportsClosed ) {
+        verify( database, never() ).rollback();
+      } else {
+        verify( database, times( 1 ) ).rollback();
+      }
+      InOrder cleanupOrder = inOrder( database, wrapper );
+      if ( !wrapperReportsClosed ) {
+        cleanupOrder.verify( database ).rollback();
+      }
+      cleanupOrder.verify( database ).disconnect();
+      cleanupOrder.verify( wrapper ).close();
+    } finally {
+      releaseWorker.countDown();
+      releaseCancellation.countDown();
+      worker.join( 1000 );
+      if ( cleanupThread.get() != null ) {
+        cleanupThread.get().join( 1000 );
+      }
+    }
+  }
+
   @Test
   public void shouldReportUnexpectedDatabaseCleanupFailure() throws Exception {
     Database database = mock( Database.class );
