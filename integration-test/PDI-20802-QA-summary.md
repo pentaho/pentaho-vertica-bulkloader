@@ -136,6 +136,74 @@ case failed the natural-exit assertion: expected exit code `0`, actual `124`
 after the watchdog timeout. Its later SQL-error, recovery and row assertions
 were not reached.
 
+## Pooled recovery test details
+
+`pooledConnectionRecoversInSameKitchenJvm` uses a real PDI Kitchen job, Vertica
+connection pool, JDBC driver and Vertica server. It is intended to check that a
+failed load with pooling enabled does not prevent a subsequent load in the same
+Kitchen JVM from succeeding. The scenario is:
+
+1. Create a test table and user, then revoke the user's `INSERT` privilege while
+   retaining the access needed for table metadata. Enable pooling on the loader's
+   database connection and start a transformation generating 100,000 rows.
+2. Expect Vertica to reject the first COPY with a permission error. The job must
+   follow the transformation's failure hop; an unexpected successful first load
+   goes to an Abort job entry instead.
+3. On the failure hop, an admin connection restores `INSERT` permission. The job
+   reruns the same transformation, with pooling enabled, in the same Kitchen JVM.
+4. Expect Kitchen to finish naturally with exit code `0`, log the pool acquisition,
+   the original SQL permission error and the recovery job entry, and leave no
+   loader sessions. Independently query Vertica for exactly 100,000 rows with the
+   expected ID and payload. The log must not contain unexpected cleanup errors,
+   `NoClassDefFoundError`, or an uncaught thread exception.
+
+The test does not assert an intermediate zero-row count after the denied load,
+nor does it verify that the retry borrows the same physical connection or prove
+the pooled-wrapper timeout race described below.
+
+**Observed failure:** PDI created a pool and acquired a pooled connection, but the
+first load's COPY worker failed while trying to unwrap that connection, before
+creating or starting the Vertica COPY stream:
+
+```text
+Exception in thread "pool-5-thread-1" java.lang.NoClassDefFoundError: org/apache/commons/dbcp/DelegatingConnection
+    at org.pentaho.di.verticabulkload.VerticaBulkLoader.unwrapConnection(VerticaBulkLoader.java:929)
+    at org.pentaho.di.verticabulkload.VerticaBulkLoader.getVerticaConnection(VerticaBulkLoader.java:921)
+   at org.pentaho.di.verticabulkload.VerticaBulkLoader.getVerticaConnection(VerticaBulkLoader.java:911)
+    at org.pentaho.di.verticabulkload.VerticaBulkLoader.createVerticaCopyStream(VerticaBulkLoader.java:906)
+    at org.pentaho.di.verticabulkload.VerticaBulkLoader.runCopy(VerticaBulkLoader.java:401)
+Caused by: java.lang.ClassNotFoundException: org.apache.commons.dbcp.DelegatingConnection
+```
+
+The worker's `runCopy` catches `Exception`, but `NoClassDefFoundError` is a Java
+`Error`, so it escapes that handler. Kitchen did not terminate naturally; after
+120 seconds the test watchdog terminated the process group. The first assertion
+failed because the expected exit code was `0` and the actual code was `124`.
+The permission rejection, failure hop, grant and recovery were not reached, so
+their assertions were not evaluated. The pool acquisition is an observation in
+the retained log, not an assertion reached by this failed test. Any session
+closure after the watchdog kill is not proof of natural cleanup.
+
+**What the missing legacy DBCP class means:** Apache Commons DBCP is a JDBC
+connection-pooling library. The plugin's `unwrapConnection` directly references
+`org.apache.commons.dbcp.DelegatingConnection`, a wrapper class in the older
+`commons-dbcp` 1.x package, and the core POM declares `commons-dbcp:commons-dbcp:1.4`.
+When a pooled connection is passed to the loader, Java must resolve that class
+to evaluate the `instanceof` check. In this run the plugin's class loader could
+not find it. The selected PDI 11.1.0.0-461 archive contains
+`commons-dbcp2-2.9.0.jar`, whose classes use the different
+`org.apache.commons.dbcp2` namespace; DBCP2 does not provide the older class
+under its original name. The tested candidate plugin assembly did not include a
+legacy DBCP JAR. The exact cause of the missing runtime dependency or class-loader
+visibility, and whether this packaging is expected for a supported installation,
+still need developer investigation. This is separate from the missing Vertica
+`SConnection` class reported by the non-pooled cancellation tests.
+
+The final run's Kitchen log and diagnostics are retained locally under
+`integration-test/pentaho-platform/target/evidence/pdi20802-lifecycle-final2/`
+in the `pooledConnectionRecoversInSameKitchenJvm-*` directory. These generated
+artifacts are not committed; review them before sharing.
+
 ## Outstanding pooled-connection integration scenario
 
 **Not run:** forced stop or cancellation during an active COPY where COPY and
