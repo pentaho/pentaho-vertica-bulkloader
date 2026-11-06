@@ -30,6 +30,8 @@ configuration and image-supplied JDBC. No license or JDBC override was supplied.
 | Bundled distribution plugin on 461 | 7 integration tests passed their original assertions; cleanup exception was missed | 3:52 / 18:13:57 |
 | Master candidate, lifecycle suite | 5 real integration tests: 2 passed, 3 failed | 4:27 / 23:43:40 |
 | Master candidate, stricter original suite | 7 real integration tests: 3 passed, 4 failed on cleanup error | 2:40 / 23:47:25 |
+| Bundled distribution plugin, both strict suites | 12 real integration tests: 5 passed, 7 failed; same scenarios as candidate | 6:17 / Nov 6 13:40:25 |
+| Bundled plugin plus DBCP 1.4, pooled test only | Recovery completed; test failed on separate JDBC cleanup error | 2:51 / Nov 6 13:44:38 |
 
 The candidate was built from merged master commit `528bd20`; it was overlaid onto
 the 461 runtime. The bundled run used the plugin already present in the 461 ZIP.
@@ -53,6 +55,32 @@ does not exit naturally and reaches the 120-second watchdog. The tested image
 contains `commons-dbcp2`, not the legacy `commons-dbcp` JAR. The pooled run does
 not reach recovery or prove the reviewed wrapper-lease race. The watchdog kill
 is a **failure**, not successful cleanup.
+
+### Bundled and candidate comparison
+
+On November 6, both strict suites were run against the plugin bundled in the
+11.1.0.0-461 archive. The same 12 scenarios had the same pass/fail outcomes as
+the previous master-candidate runs: the original suite passed 3 and failed 4,
+and the lifecycle suite passed 2 and failed 3. In both plugin variants the six
+SQL-failure or Abort cases failed the cleanup-log assertion with the missing
+`com.vertica.jdbc.SConnection`; the pooled test failed after 120 seconds with
+the missing `org.apache.commons.dbcp.DelegatingConnection`. The bundled and
+candidate plugin JARs and loader class files have different hashes, so identical
+binaries are not assumed. Both runs used the same PDI archive, automation image
+digest, Vertica image and image-supplied JDBC 9.2.1-0 checksum listed below.
+
+A separate diagnostic kept the bundled plugin core JAR byte-for-byte unchanged
+and added the locally cached `commons-dbcp:commons-dbcp:1.4` JAR to its plugin
+`lib` directory. Only the pooled recovery test was rerun. The missing DBCP class
+and watchdog hang did not recur: the first COPY reached Vertica's permission
+error, the job restored access, the retry completed naturally, and independent
+assertions verified 100,000 correct rows. The test still **failed** its final
+clean-log assertion because the first load's cancellation logged the separate
+missing `com.vertica.jdbc.SConnection` class. These observations strongly support
+the missing legacy DBCP class as the pooled hang's trigger in this environment;
+they do not validate the wrapper-lease race or establish the correct production
+packaging. The modified plugin archive was a test-only diagnostic, not a fix or
+an endorsement to add an old dependency to production.
 
 | Provenance | Value |
 | --- | --- |
@@ -78,7 +106,9 @@ build artifacts, not committed certification; archive or attach reviewed reports
 and logs as appropriate. Do not include license contents or Docker build contexts.
 The final lifecycle run and its copied Failsafe report are in
 `pdi20802-lifecycle-final2`; the stricter original-suite run is in
-`pdi20802-original-strict`. The earlier combined lifecycle run was contaminated by a
+`pdi20802-original-strict`. The strict bundled comparison and the DBCP diagnostic,
+including copied Failsafe reports, are in `pdi20802-bundled-comparison-1106` and
+`pdi20802-dbcp1-diagnostic-1106`, respectively. The earlier combined lifecycle run was contaminated by a
 watchdog-orphaned JVM; it is retained as `pdi20802-lifecycle-final`, but its
 post-timeout session assertions must not be interpreted as independent results.
 
@@ -172,9 +202,10 @@ The missing class may depend on the tested runtime's dependency packaging or
 class-loader visibility; this result alone does not establish a defect in every
 supported installation or prove that the original PDI-20802 failure is unfixed.
 
-**Observed failure:** PDI created a pool and acquired a pooled connection, but the
-first load's COPY worker failed while trying to unwrap that connection, before
-creating or starting the Vertica COPY stream:
+**Observed failure:** With either the candidate or the unmodified bundled plugin,
+PDI created a pool and acquired a pooled connection, but the first load's COPY
+worker failed while trying to unwrap that connection, before creating or starting
+the Vertica COPY stream:
 
 ```text
 Exception in thread "pool-5-thread-1" java.lang.NoClassDefFoundError: org/apache/commons/dbcp/DelegatingConnection
