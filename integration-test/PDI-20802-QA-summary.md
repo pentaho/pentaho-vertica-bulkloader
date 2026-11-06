@@ -223,7 +223,10 @@ The test does not assert an intermediate zero-row count after the denied load,
 nor does it verify that the retry borrows the same physical connection or prove
 the pooled-wrapper timeout race described below.
 
-**Relationship to step execution:** This failure occurs during execution of the
+### JDBC 9.2.1-0: missing DBCP class and timeout
+
+**Relationship to step execution:** With the image-supplied JDBC 9.2.1-0 driver,
+this failure occurs during execution of the
 Vertica Bulk Loader step itself, not in the test assertion or Docker harness.
 The step's COPY worker calls `runCopy`, which attempts to obtain the underlying
 Vertica connection from the pooled wrapper before creating the COPY stream.
@@ -277,6 +280,25 @@ The final run's Kitchen log and diagnostics are retained locally under
 `integration-test/pentaho-platform/target/evidence/pdi20802-lifecycle-final2/`
 in the `pooledConnectionRecoversInSameKitchenJvm-*` directory. These generated
 artifacts are not committed; review them before sharing.
+
+### JDBC 6: pool initialization failure
+
+With the supplied JDBC 6 driver and MD5 enabled only for the disposable test
+user, both the candidate and bundled plugins failed this test before COPY.
+During pool initialization, PDI attempted to validate the connection, but the
+driver's `com.vertica.jdbc.VerticaConnectionImpl` does not implement
+`java.sql.Connection.isValid(int)`:
+
+```text
+Unable to pre-load connection to the connection pool
+Receiver class com.vertica.jdbc.VerticaConnectionImpl does not define or inherit an implementation of the resolved method 'abstract boolean isValid(int)' of interface java.sql.Connection.
+```
+
+The initial load and the retry both failed to initialize their pools. Kitchen
+exited naturally with code `1`, rather than the expected `0`; the failure hop
+restored permission and attempted the retry, but neither load reached COPY. This
+is not the JDBC 9.2 missing-DBCP worker failure or watchdog timeout, and it does
+not establish whether the pooled-wrapper race is fixed.
 
 ## Outstanding pooled-connection integration scenario
 
