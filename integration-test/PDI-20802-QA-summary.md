@@ -161,6 +161,17 @@ The test does not assert an intermediate zero-row count after the denied load,
 nor does it verify that the retry borrows the same physical connection or prove
 the pooled-wrapper timeout race described below.
 
+**Relationship to step execution:** This failure occurs during execution of the
+Vertica Bulk Loader step itself, not in the test assertion or Docker harness.
+The step's COPY worker calls `runCopy`, which attempts to obtain the underlying
+Vertica connection from the pooled wrapper before creating the COPY stream.
+That plugin code encounters the missing class and the worker exits unexpectedly;
+the test watchdog only detects and terminates the subsequent hang. No COPY is
+sent to Vertica, so this is not the intended server-side permission failure.
+The missing class may depend on the tested runtime's dependency packaging or
+class-loader visibility; this result alone does not establish a defect in every
+supported installation or prove that the original PDI-20802 failure is unfixed.
+
 **Observed failure:** PDI created a pool and acquired a pooled connection, but the
 first load's COPY worker failed while trying to unwrap that connection, before
 creating or starting the Vertica COPY stream:
