@@ -7,16 +7,24 @@ Do not print, decode or upload its contents. The file is not ignored and is
 intended for this authorized repository. An existing approved local configuration can be selected using
 `-Dvertica.it.license-file=/absolute/path`.
 
-The tested 11.1 automation image supplies Vertica JDBC 9.2.1-0.
-[prepare-runtime.sh](../pentaho-platform/docker/prepare-runtime.sh) preserves the
-image driver when replacing the runtime. An existing `vertica-jdbc.jar` in this
-directory or `-Dvertica.it.jdbc-file=/absolute/path` overrides the runtime and
-image drivers; the script removes competing runtime drivers and checks both JDBC
-and native COPY classes. JARs in this directory are ignored by Git. Neither JDBC
-nor licensing configuration is downloaded.
+The checked-in [vertica-jdbc.jar](vertica-jdbc.jar) is the supplied JDBC
+`06.00.0000` driver and is the default for the integration tests. To test another
+driver without replacing the tracked file, pass
+`-Dvertica.it.jdbc-file=/absolute/path/to/other-driver.jar`. Other JARs in this
+directory remain ignored by Git. [prepare-runtime.sh](../pentaho-platform/docker/prepare-runtime.sh)
+removes competing runtime drivers and checks both JDBC and native COPY classes.
+If the selected JAR is absent, it falls back to the selected PDI runtime or base
+image driver; check the recorded driver checksum in the run evidence. Neither
+JDBC nor licensing configuration is downloaded.
+
+For JDBC 6, add `-Dvertica.it.test-md5-auth=true` to the integration command to
+set the disposable `qa_loader` user's password algorithm to MD5. The default is
+`false`; do not use this weak authentication setting on a shared or production
+database. The CI workflow enables this setting for the disposable database by
+default; it can be disabled when testing another driver.
 
 The configuration is copied into the derived PDI image and its build context;
 never publish those. Clean run-scoped derived images and generated staging/build
-contexts after use. CI's read-only `/it-conf` mount is an optional fallback, not a
-requirement for both files. See the [execution guide](../../integration-tests-README.md)
+contexts after use. CI can select an alternate JAR on its read-only `/it-conf`
+mount explicitly. See the [execution guide](../../integration-tests-README.md)
 and [QA results](../PDI-20802-QA-summary.md).

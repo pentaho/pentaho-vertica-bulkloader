@@ -6,6 +6,7 @@ target/
 .env.test
 .env.integration
 integration-test/conf/*.jar
+!integration-test/conf/vertica-jdbc.jar
 core/logs/
 .DS_Store
 

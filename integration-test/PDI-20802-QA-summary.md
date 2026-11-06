@@ -9,7 +9,7 @@ and termination without manual intervention. The fix was merged to master in
 [PR #104](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/104), commit
 `528bd20ebd85c20502596900be5bad5d07ea992b`.
 
-**Result: cleanup and pooled-load failures found on PDI 11.1.0.0-461.** The previously executed
+**Result: driver-dependent cleanup and pooled-load failures found on PDI 11.1.0.0-461.** The previously executed
 candidate and bundled suites passed their original assertions, but their logs
 show unexpected cleanup failures that those assertions did not check. New real
 integration tests also reproduce a pooled COPY worker crash and hang. Spoon Stop,
@@ -19,10 +19,11 @@ automated results alone as proof of all ticket criteria.
 
 ## Executed validation
 
-Run locally on November 5, 2026 using the master-based `PDI_20802_tests` worktree,
+The initial runs used the master-based `PDI_20802_tests` worktree,
 Java 17 for Maven, the exact 11.1.0.0-461 distribution, the `11.1` automation
 base image with Java 21, real Vertica CE 24.1.0-0, the supplied ELM service
 configuration and image-supplied JDBC. No license or JDBC override was supplied.
+The JDBC 6 comparison runs on November 6 used the supplied driver explicitly.
 
 | Validation | Result | Maven duration / finish (UTC) |
 | --- | --- | --- |
@@ -32,6 +33,8 @@ configuration and image-supplied JDBC. No license or JDBC override was supplied.
 | Master candidate, stricter original suite | 7 real integration tests: 3 passed, 4 failed on cleanup error | 2:40 / 23:47:25 |
 | Bundled distribution plugin, both strict suites | 12 real integration tests: 5 passed, 7 failed; same scenarios as candidate | 6:17 / Nov 6 13:40:25 |
 | Bundled plugin plus DBCP 1.4, pooled test only | Recovery completed; test failed on separate JDBC cleanup error | 2:51 / Nov 6 13:44:38 |
+| Master candidate, JDBC 6 and test-user MD5 | 12 real integration tests: 11 passed, pooled test failed | 3:40 / Nov 6 15:49:04 |
+| Bundled plugin, JDBC 6 and test-user MD5 | 12 real integration tests: 11 passed, pooled test failed | Nov 6 15:54:22 |
 
 The candidate was built from merged master commit `528bd20`; it was overlaid onto
 the 461 runtime. The bundled run used the plugin already present in the 461 ZIP.
@@ -46,9 +49,9 @@ Both earlier runs contain five affected Pan/Kitchen launcher logs. They report
 `NoClassDefFoundError: com/vertica/jdbc/SConnection` from `cancelRunningCopy`
 as an unexpected database-cleanup error. In the new multi-copy run, all three
 copies logged that cleanup error. The image-supplied JDBC 9.2.1-0 JAR does not
-contain that class; behavior with other drivers remains to be investigated.
+contain that class; the subsequent JDBC 6 results are described below.
 
-With pooling enabled, the master candidate acquires a real pooled connection,
+With JDBC 9.2.1-0 and pooling enabled, the master candidate acquires a real pooled connection,
 then the COPY worker throws `NoClassDefFoundError` for
 `org/apache/commons/dbcp/DelegatingConnection` in `unwrapConnection`. Kitchen
 does not exit naturally and reaches the 120-second watchdog. The tested image
@@ -82,6 +85,32 @@ they do not validate the wrapper-lease race or establish the correct production
 packaging. The modified plugin archive was a test-only diagnostic, not a fix or
 an endorsement to add an old dependency to production.
 
+### Supplied JDBC 6 comparison
+
+On November 6, both strict suites were rerun with the user-supplied
+`vertica-jdbc-driver-06.00.0000.jar` (SHA-256
+`3fea0ca1ead071d3a1ce022232d19c8200e889b2b657575fa1b9b551a11dd224`), using the
+same PDI 461, Java 21 and Vertica CE 24.1 runtime. This JAR contains the
+`com.vertica.jdbc.SConnection` class missing from JDBC 9.2.1-0.
+
+The initial candidate run failed all 12 tests before COPY: JDBC 6 sent an MD5
+password, while the disposable `qa_loader` user inherited Vertica's default
+SHA-512 algorithm. A subsequent run explicitly set the algorithm to MD5 only
+for that disposable user via `-Dvertica.it.test-md5-auth=true`; the database-wide
+default was not changed. MD5 is weak and this opt-in is for isolated test
+databases only, not a production recommendation.
+
+With that compatibility setting, both the master candidate and bundled plugin
+passed all 7 original-suite tests and 4 of 5 lifecycle tests. The six cases
+that reported missing `SConnection` with JDBC 9.2 passed their strict cleanup
+checks with JDBC 6. The pooled recovery test failed in both runs: Kitchen
+exited `1` rather than the expected `0` because pool initialization called
+`java.sql.Connection.isValid(int)`, which the supplied driver's
+`com.vertica.jdbc.VerticaConnectionImpl` does not implement. Both the initial
+load and retry failed at pool initialization; neither reached COPY or a successful recovery.
+This is distinct from the JDBC 9.2 pooled worker's missing-DBCP timeout and does
+not establish whether the pooled-wrapper race is fixed.
+
 | Provenance | Value |
 | --- | --- |
 | PDI archive | `11.1.0.0-461`; catalog SHA-1 `c4d5844610a7778100babd6c01eb7e83d9fa8545`; SHA-256 `29729d25c931b43ad6b685a03d5cfeb20c9458606661330338490a6ba288798a` |
@@ -108,7 +137,10 @@ The final lifecycle run and its copied Failsafe report are in
 `pdi20802-lifecycle-final2`; the stricter original-suite run is in
 `pdi20802-original-strict`. The strict bundled comparison and the DBCP diagnostic,
 including copied Failsafe reports, are in `pdi20802-bundled-comparison-1106` and
-`pdi20802-dbcp1-diagnostic-1106`, respectively. The earlier combined lifecycle run was contaminated by a
+`pdi20802-dbcp1-diagnostic-1106`, respectively. JDBC 6 results are in
+`pdi20802-jdbc6-local-1106` (default authentication),
+`pdi20802-jdbc6-md5-local-1106`, and `pdi20802-jdbc6-md5-bundled-1106`.
+The earlier combined lifecycle run was contaminated by a
 watchdog-orphaned JVM; it is retained as `pdi20802-lifecycle-final`, but its
 post-timeout session assertions must not be interpreted as independent results.
 
