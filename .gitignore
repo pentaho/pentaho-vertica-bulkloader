@@ -2,3 +2,10 @@
 *.iml
 target/
 
+# Local credentials and integration evidence
+.env.test
+.env.integration
+integration-test/conf/*.jar
+core/logs/
+.DS_Store
+
