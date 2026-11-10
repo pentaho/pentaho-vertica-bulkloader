@@ -17,7 +17,7 @@ on:
         type: string
         default: ''
       build:
-        description: Exact PDI build (for example 11.0.0.4-328); empty selects latest in series
+        description: Exact PDI build (for example 11.0.0.4-330); empty selects latest in series
         type: string
         required: false
         default: ''
@@ -46,7 +46,7 @@ on:
         type: string
         default: ''
       build:
-        description: Exact PDI build (for example 11.0.0.4-328); empty selects latest in series
+        description: Exact PDI build (for example 11.0.0.4-330); empty selects latest in series
         type: string
         default: ''
       series:

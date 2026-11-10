@@ -51,7 +51,7 @@ Archives are cached in the platform module's `target/runtime`.
 ```bash
 # Select the latest 11.0.0.4 build, or pin the build under validation.
 resolution=$(bash integration-test/resolve-pdi-build.sh --series 11.0.0.4)
-# To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.0.0.4-328)
+# To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.0.0.4-330)
 build=$(printf '%s\n' "$resolution" | sed -n 's/^build=//p')
 archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
 image=repo.pentaho.com/pnt-docker/automation/pdi-client:11.0
@@ -92,9 +92,8 @@ authentication only for the disposable `qa_loader` test user; Maven's property
 default is `false`. MD5 is weak and this setting is only for the isolated test
 database, never a production or shared server. With JDBC 6 and the tested
 Vertica 24.1 default SHA-512 authentication, the driver cannot log in. Omit
-the MD5 option when testing a driver compatible with SHA-512. On the tested
-11.0.0.4-328 runtime, JDBC 6 prevents pool initialization because it lacks
-`Connection.isValid(int)`; see the QA summary for candidate and bundled results.
+the MD5 option when testing a driver compatible with SHA-512. JDBC 6 lacks
+`Connection.isValid(int)`; see the QA summary for pool initialization results.
 
 Always use `verify` for Failsafe verification and normal container teardown. Use a
 unique lowercase Docker-safe `vertica.it.run-id`. Concurrent runs require separate
@@ -118,7 +117,7 @@ the checkout and workflow before granting credentials. Never use
 
 | Input | Default and behavior |
 | --- | --- |
-| `build` | Optional exact build, e.g. `11.0.0.4-328`; when set it takes precedence over `series`. |
+| `build` | Optional exact build, e.g. `11.0.0.4-330`; when set it takes precedence over `series`. |
 | `series` | Optional two-part release family or four-part maintenance series; defaults to `11.0.0.4`. |
 | `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
 | `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`11.0` for 11.0.0.4). |
