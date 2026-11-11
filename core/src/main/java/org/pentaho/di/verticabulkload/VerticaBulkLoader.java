@@ -407,23 +407,18 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       if ( getLinesOutput() != rowsLoaded ) {
         logMinimal( String.format( "%d records loaded out of %d records sent.", rowsLoaded, getLinesOutput() ) );
       }
-    } catch ( Exception | LinkageError e ) {
-      boolean linkageError = e instanceof LinkageError;
+    } catch ( Exception e ) {
       boolean wasStopped;
       synchronized ( workerLifecycleLock ) {
         wasStopped = isWorkerStopRequested();
-        if ( !wasStopped || linkageError ) {
-          setErrors( 1 );
-        }
         if ( !wasStopped ) {
+          setErrors( 1 );
           setStopped( true );
         }
       }
       // Release the local handoff before stopAll(): a producer may already be blocked inside a pipe write.
       closePipedInputStream( workerInputStream );
-      if ( linkageError ) {
-        logError( "COPY worker linkage error.", e );
-      } else if ( wasStopped ) {
+      if ( wasStopped ) {
         logBasic( "SQL statement interrupted by halt of transformation" );
       } else {
         logError( "SQL Error during statement execution.", e );
