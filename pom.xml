@@ -26,15 +26,15 @@
   </modules>
   <properties>
     <pdi.version>11.0.0.0-SNAPSHOT</pdi.version>
-    <vertica-jdbc-driver.version>06.00.0000</vertica-jdbc-driver.version>
+    <vertica-jdbc-driver.version>24.4.0-0</vertica-jdbc-driver.version>
     <mockito-all.version>1.9.5</mockito-all.version>
     <junit.version>4.4</junit.version>
   </properties>
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>com.vertica</groupId>
-        <artifactId>vertica-jdbc-driver</artifactId>
+        <groupId>com.vertica.jdbc</groupId>
+        <artifactId>vertica-jdbc</artifactId>
         <version>${vertica-jdbc-driver.version}</version>
         <scope>provided</scope>
       </dependency>
