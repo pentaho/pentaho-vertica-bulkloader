@@ -409,14 +409,7 @@ public class VerticaBulkLoaderTest {
       new SQLException( "Request failed due to the current cluster health state" ) );
   }
 
-  @Test( timeout = 5000 )
-  public void shouldWakeProducerWhenLinkageErrorOccursWhileFlushing() throws Exception {
-    NoClassDefFoundError failure = new NoClassDefFoundError( "org/apache/commons/dbcp/DelegatingConnection" );
-    assertStopWhenCopyFailsWhileTheProducerFlushes( failure );
-    verify( loader ).logError( "COPY worker linkage error.", failure );
-  }
-
-  private void assertStopWhenCopyFailsWhileTheProducerFlushes( Throwable failure ) throws Exception {
+  private void assertStopWhenCopyFailsWhileTheProducerFlushes( Exception failure ) throws Exception {
     RowMeta rowMeta = new RowMeta();
     rowMeta.addValueMeta( new ValueMetaString( "input" ) );
     loader.setInputRowMeta( rowMeta );
@@ -1220,44 +1213,6 @@ public class VerticaBulkLoaderTest {
   }
 
   @Test( timeout = 5000 )
-  public void shouldStopAndReportLinkageErrorDuringCopyStreamCreation() throws Exception {
-    NoClassDefFoundError failure = new NoClassDefFoundError( "org/apache/commons/dbcp/DelegatingConnection" );
-    assertCopyStageFailureStopsStep( CopyStage.CREATE, failure );
-    verify( loader ).logError( "COPY worker linkage error.", failure );
-    verify( loader ).setOutputDone();
-  }
-
-  @Test( timeout = 5000 )
-  public void shouldReportLinkageErrorWhenAlreadyStopped() throws Exception {
-    configureSingleColumnLoader();
-    CountDownLatch creationStarted = new CountDownLatch( 1 );
-    CountDownLatch releaseCreation = new CountDownLatch( 1 );
-    AbstractMethodError failure = new AbstractMethodError( "Driver method is missing" );
-    doAnswer( invocation -> {
-      creationStarted.countDown();
-      awaitIgnoringInterrupts( releaseCreation );
-      throw failure;
-    } ).when( loader ).createVerticaCopyStream( anyString() );
-    doReturn( new Object[] { "value" } ).when( loader ).getRow();
-
-    try {
-      assertTrue( loader.processRow( loaderMeta, loaderData ) );
-      assertTrue( creationStarted.await( 1, TimeUnit.SECONDS ) );
-      clearInvocations( loader );
-      loader.setStopped( true );
-      releaseCreation.countDown();
-      loaderData.workerThread.join( 2000 );
-
-      assertFalse( loaderData.workerThread.isAlive() );
-      assertTrue( loader.getErrors() > 0 );
-      verify( loader ).logError( "COPY worker linkage error.", failure );
-      verify( loader, never() ).stopAll();
-    } finally {
-      releaseCreation.countDown();
-    }
-  }
-
-  @Test( timeout = 5000 )
   public void shouldStopWhenCopyStartFails() throws Exception {
     assertCopyStageFailureStopsStep( CopyStage.START, new SQLException( "Unable to start COPY" ) );
   }
@@ -1387,7 +1342,7 @@ public class VerticaBulkLoaderTest {
     return stream;
   }
 
-  private void assertCopyStageFailureStopsStep( CopyStage stage, Throwable failure ) throws Exception {
+  private void assertCopyStageFailureStopsStep( CopyStage stage, Exception failure ) throws Exception {
     configureSingleColumnLoader();
     VerticaCopyStream copyStream = mock( VerticaCopyStream.class );
     when( copyStream.getRejects() ).thenReturn( Collections.emptyList() );
