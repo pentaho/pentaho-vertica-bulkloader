@@ -13,11 +13,8 @@
 
 package org.pentaho.di.verticabulkload;
 
-import com.vertica.core.VConnection;
-import com.vertica.jdbc.SConnection;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
-import org.apache.commons.dbcp.DelegatingConnection;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -27,6 +24,7 @@ import org.mockito.InOrder;
 import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
+import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.exception.KettleValueException;
@@ -61,8 +59,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.sql.PooledConnection;
-
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertArrayEquals;
@@ -75,6 +71,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -85,7 +82,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 
 /**
  * Unit test for {@link VerticaBulkLoader}.
@@ -177,65 +173,41 @@ public class VerticaBulkLoaderTest {
     }
   }
 
-  /**
-   * This tests the getConnection call with different circumstances - First, with a regular VerticaConnection - Next,
-   * with a DelegatingConnection (from DBCP) with a VerticaConnection as the innermostDelegate - Next, with a
-   * DelegatingConnection with a java.sql.Connection mock - Finally, with a java.sql.Connection mock
-   * 
-   * @throws Exception
-   */
   @Test
-  public void testGetConnection() throws Exception {
-    Connection connection1 = mock( VerticaConnection.class );
-    DelegatingConnection connection2 = mock( DelegatingConnection.class );
-    when( connection2.getInnermostDelegate() ).thenReturn( connection1 );
-    DelegatingConnection connection3 = mock( DelegatingConnection.class );
-    when( connection3.getInnermostDelegate() ).thenReturn( mock( java.sql.Connection.class ) );
-    Connection connection4 = mock( java.sql.Connection.class );
-
-    loaderData.db.setConnection( connection1 );
-    Connection rtn = loader.getVerticaConnection();
-    assertSame( connection1, rtn ); // Should just return the object in loaderData.db
-    loaderData.db.setConnection( connection2 );
-    rtn = loader.getVerticaConnection();
-    assertSame( connection1, rtn ); // Should return the innermost delegate. If it didn't, throw exception
-    loaderData.db.setConnection( connection3 );
-    try {
-      rtn = loader.getVerticaConnection();
-      fail( "Expected IllegalStateException" );
-    } catch ( IllegalStateException expected ) {
-
-    }
-
-    loaderData.db.setConnection( connection4 );
-    try {
-      rtn = loader.getVerticaConnection();
-      fail( "Expected IllegalStateException" );
-    } catch ( IllegalStateException expected ) {
-
-    }
-
+  public void shouldUseDirectVerticaConnectionWithoutUnwrapping() throws Exception {
+    VerticaConnection connection = mock( VerticaConnection.class );
+    loaderData.db.setConnection( connection );
+    assertSame( connection, loader.getVerticaConnection() );
+    verify( connection, never() ).unwrap( VerticaConnection.class );
   }
 
   @Test
-  public void shouldUnwrapJdbcWrapperAndPooledConnection() throws Exception {
+  public void shouldUnwrapJdbcWrapperWithoutCheckingIsWrapperFor() throws Exception {
     VerticaConnection verticaConnection = mock( VerticaConnection.class );
     Connection wrapper = mock( Connection.class );
-    when( wrapper.isWrapperFor( VerticaConnection.class ) ).thenReturn( true );
     when( wrapper.unwrap( VerticaConnection.class ) ).thenReturn( verticaConnection );
     loaderData.db.setConnection( wrapper );
     assertSame( verticaConnection, loader.getVerticaConnection() );
-
-    Connection pooledConnection = mock( Connection.class, withSettings().extraInterfaces( PooledConnection.class ) );
-    when( ( (PooledConnection) pooledConnection ).getConnection() ).thenReturn( verticaConnection );
-    loaderData.db.setConnection( pooledConnection );
-    assertSame( verticaConnection, loader.getVerticaConnection() );
+    verify( wrapper, never() ).isWrapperFor( VerticaConnection.class );
   }
 
   @Test
-  public void shouldPreserveConnectionErrorWhenUnwrapIsUnsupported() throws Exception {
+  public void shouldReportExceptionWhenUnwrapIsUnsupported() throws Exception {
     Connection connection = mock( Connection.class );
-    when( connection.isWrapperFor( VerticaConnection.class ) ).thenThrow( new SQLException( "Unwrap unsupported" ) );
+    SQLException failure = new SQLException( "Unwrap unsupported" );
+    when( connection.unwrap( VerticaConnection.class ) ).thenThrow( failure );
+    loaderData.db.setConnection( connection );
+    try {
+      loader.getVerticaConnection();
+      fail( "Expected the unwrap failure to be reported" );
+    } catch ( SQLException expected ) {
+      assertSame( failure, expected );
+    }
+  }
+
+  @Test
+  public void shouldRejectNullFromUnwrap() throws Exception {
+    Connection connection = mock( Connection.class );
     loaderData.db.setConnection( connection );
     try {
       loader.getVerticaConnection();
@@ -432,6 +404,18 @@ public class VerticaBulkLoaderTest {
 
   @Test( timeout = 5000 )
   public void shouldStopWhenVerticaCopyFailsWhileTheProducerFlushes() throws Exception {
+    assertStopWhenCopyFailsWhileTheProducerFlushes(
+      new SQLException( "Request failed due to the current cluster health state" ) );
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldWakeProducerWhenLinkageErrorOccursWhileFlushing() throws Exception {
+    NoClassDefFoundError failure = new NoClassDefFoundError( "org/apache/commons/dbcp/DelegatingConnection" );
+    assertStopWhenCopyFailsWhileTheProducerFlushes( failure );
+    verify( loader ).logError( "COPY worker linkage error.", failure );
+  }
+
+  private void assertStopWhenCopyFailsWhileTheProducerFlushes( Throwable failure ) throws Exception {
     RowMeta rowMeta = new RowMeta();
     rowMeta.addValueMeta( new ValueMetaString( "input" ) );
     loader.setInputRowMeta( rowMeta );
@@ -449,7 +433,7 @@ public class VerticaBulkLoaderTest {
       if ( !flushStarted.await( 2, TimeUnit.SECONDS ) ) {
         throw new SQLException( "The test producer did not reach the pipe flush" );
       }
-      throw new SQLException( "Request failed due to the current cluster health state" );
+      throw failure;
     } ).when( copyStream ).execute();
     doReturn( copyStream ).when( loader ).createVerticaCopyStream( anyString() );
     doAnswer( invocation -> {
@@ -701,7 +685,6 @@ public class VerticaBulkLoaderTest {
       assertTrue( cleanupThread.get().isAlive() );
       assertTrue( loader.getErrors() > 0 );
       verify( loader, times( 1 ) ).createDatabaseCleanupThread( any( Runnable.class ) );
-      verify( loader, never() ).cancelRunningCopy( database );
       verify( database, never() ).rollback();
     } finally {
       releaseDisconnect.countDown();
@@ -1011,7 +994,7 @@ public class VerticaBulkLoaderTest {
       loader.stopRunning( loaderMeta, loaderData );
       assertTrue( TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - startedAt ) < 1000 );
       assertTrue( loader.getErrors() > 0 );
-      verify( loader ).cancelRunningCopy( loaderData.db );
+      assertTrue( loaderData.workerThread.isAlive() );
     } finally {
       releaseFinish.countDown();
       loaderData.workerThread.join( 1000 );
@@ -1020,17 +1003,102 @@ public class VerticaBulkLoaderTest {
     verify( copyStream, times( 1 ) ).finish();
   }
 
-  @Test
-  public void shouldCancelRunningCopyThroughVerticaDriverConnection() throws Exception {
+  @Test( timeout = 3000 )
+  public void shouldKeepPooledConnectionLeasedUntilCopyWorkerStops() throws Exception {
     Database database = mock( Database.class );
-    SConnection connection = mock( SConnection.class, withSettings().extraInterfaces( VerticaConnection.class ) );
-    VConnection driverConnection = mock( VConnection.class );
+    Connection pooledConnection = mock( Connection.class );
+    VerticaConnection physicalConnection = mock( VerticaConnection.class );
+    when( database.getConnection() ).thenReturn( pooledConnection );
+    when( pooledConnection.unwrap( VerticaConnection.class ) ).thenReturn( physicalConnection );
+    loaderData.db = database;
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    CountDownLatch workerStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseWorker = new CountDownLatch( 1 );
+    CountDownLatch connectionInvalidated = new CountDownLatch( 1 );
+    CountDownLatch poolLeaseReleased = new CountDownLatch( 1 );
+    Thread worker = new Thread( () -> {
+      workerStarted.countDown();
+      awaitIgnoringInterrupts( releaseWorker );
+    } );
+    worker.setDaemon( true );
+    loaderData.workerThread = worker;
+    doAnswer( invocation -> {
+      connectionInvalidated.countDown();
+      return null;
+    } ).when( physicalConnection ).close();
+    doAnswer( invocation -> {
+      poolLeaseReleased.countDown();
+      return null;
+    } ).when( pooledConnection ).close();
+
+    worker.start();
+    try {
+      assertTrue( workerStarted.await( 1, TimeUnit.SECONDS ) );
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( connectionInvalidated.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( worker.isAlive() );
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
+      verify( pooledConnection, never() ).close();
+    } finally {
+      releaseWorker.countDown();
+      worker.join( 1000 );
+    }
+
+    assertTrue( poolLeaseReleased.await( 1, TimeUnit.SECONDS ) );
+    InOrder cleanupOrder = inOrder( physicalConnection, database, pooledConnection );
+    cleanupOrder.verify( physicalConnection ).close();
+    cleanupOrder.verify( database ).rollback();
+    cleanupOrder.verify( database ).disconnect();
+    cleanupOrder.verify( pooledConnection ).close();
+  }
+
+  @Test( timeout = 3000 )
+  public void shouldBoundStopWhenPhysicalConnectionCloseBlocks() throws Exception {
+    Database database = mock( Database.class );
+    VerticaConnection connection = mock( VerticaConnection.class );
     when( database.getConnection() ).thenReturn( connection );
-    when( connection.getDSIConnection() ).thenReturn( driverConnection );
+    loaderData.db = database;
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+    CountDownLatch workerStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseWorker = new CountDownLatch( 1 );
+    CountDownLatch closeStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseClose = new CountDownLatch( 1 );
+    CountDownLatch disconnected = new CountDownLatch( 1 );
+    AtomicReference<Thread> closeThread = new AtomicReference<>();
+    Thread worker = new Thread( () -> {
+      workerStarted.countDown();
+      awaitIgnoringInterrupts( releaseWorker );
+    } );
+    worker.setDaemon( true );
+    loaderData.workerThread = worker;
+    doAnswer( invocation -> {
+      closeThread.set( Thread.currentThread() );
+      closeStarted.countDown();
+      awaitIgnoringInterrupts( releaseClose );
+      return null;
+    } ).when( connection ).close();
+    doAnswer( invocation -> {
+      disconnected.countDown();
+      return null;
+    } ).when( database ).disconnect();
 
-    loader.cancelRunningCopy( database );
-
-    verify( driverConnection ).cancelCurrentStatement();
+    worker.start();
+    try {
+      assertTrue( workerStarted.await( 1, TimeUnit.SECONDS ) );
+      long startedAt = System.nanoTime();
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( TimeUnit.NANOSECONDS.toMillis( System.nanoTime() - startedAt ) < 1000 );
+      assertTrue( closeStarted.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( closeThread.get().isDaemon() );
+      assertTrue( loader.getErrors() > 0 );
+      verify( database, never() ).disconnect();
+    } finally {
+      releaseClose.countDown();
+      releaseWorker.countDown();
+      worker.join( 1000 );
+    }
+    assertTrue( disconnected.await( 1, TimeUnit.SECONDS ) );
   }
 
   @Test
@@ -1050,12 +1118,12 @@ public class VerticaBulkLoaderTest {
   }
 
   @Test
-  public void shouldDisconnectEvenWhenCopyCancellationFails() throws Exception {
+  public void shouldDisconnectEvenWhenRollbackFails() throws Exception {
     Database database = mock( Database.class );
     when( database.getConnection() ).thenReturn( mock( Connection.class ) );
     loaderData.db = database;
     loader.setErrors( 0 );
-    doThrow( new SQLException( "Cancellation failed" ) ).when( loader ).cancelRunningCopy( database );
+    doThrow( new KettleDatabaseException( "Rollback failed" ) ).when( database ).rollback();
 
     loader.stopRunning( loaderMeta, loaderData );
 
@@ -1148,6 +1216,44 @@ public class VerticaBulkLoaderTest {
   @Test( timeout = 5000 )
   public void shouldStopWhenCopyStreamCreationFails() throws Exception {
     assertCopyStageFailureStopsStep( CopyStage.CREATE, new SQLException( "Unable to create COPY stream" ) );
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldStopAndReportLinkageErrorDuringCopyStreamCreation() throws Exception {
+    NoClassDefFoundError failure = new NoClassDefFoundError( "org/apache/commons/dbcp/DelegatingConnection" );
+    assertCopyStageFailureStopsStep( CopyStage.CREATE, failure );
+    verify( loader ).logError( "COPY worker linkage error.", failure );
+    verify( loader ).setOutputDone();
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldReportLinkageErrorWhenAlreadyStopped() throws Exception {
+    configureSingleColumnLoader();
+    CountDownLatch creationStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseCreation = new CountDownLatch( 1 );
+    AbstractMethodError failure = new AbstractMethodError( "Driver method is missing" );
+    doAnswer( invocation -> {
+      creationStarted.countDown();
+      awaitIgnoringInterrupts( releaseCreation );
+      throw failure;
+    } ).when( loader ).createVerticaCopyStream( anyString() );
+    doReturn( new Object[] { "value" } ).when( loader ).getRow();
+
+    try {
+      assertTrue( loader.processRow( loaderMeta, loaderData ) );
+      assertTrue( creationStarted.await( 1, TimeUnit.SECONDS ) );
+      clearInvocations( loader );
+      loader.setStopped( true );
+      releaseCreation.countDown();
+      loaderData.workerThread.join( 2000 );
+
+      assertFalse( loaderData.workerThread.isAlive() );
+      assertTrue( loader.getErrors() > 0 );
+      verify( loader ).logError( "COPY worker linkage error.", failure );
+      verify( loader, never() ).stopAll();
+    } finally {
+      releaseCreation.countDown();
+    }
   }
 
   @Test( timeout = 5000 )
@@ -1269,7 +1375,6 @@ public class VerticaBulkLoaderTest {
       assertTrue( workerThread.isDaemon() );
       assertTrue( workerThread.isAlive() );
       assertTrue( loader.getErrors() > 0 );
-      verify( loader ).cancelRunningCopy( loaderData.db );
     } finally {
       releaseStartup.countDown();
       workerThread.join( 1000 );
@@ -1281,7 +1386,7 @@ public class VerticaBulkLoaderTest {
     return stream;
   }
 
-  private void assertCopyStageFailureStopsStep( CopyStage stage, Exception failure ) throws Exception {
+  private void assertCopyStageFailureStopsStep( CopyStage stage, Throwable failure ) throws Exception {
     configureSingleColumnLoader();
     VerticaCopyStream copyStream = mock( VerticaCopyStream.class );
     when( copyStream.getRejects() ).thenReturn( Collections.emptyList() );
