@@ -21,8 +21,8 @@
       <artifactId>kettle-ui-swt</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.vertica.jdbc</groupId>
-      <artifactId>vertica-jdbc</artifactId>
+      <groupId>com.vertica</groupId>
+      <artifactId>vertica-jdbc-driver</artifactId>
     </dependency>
     <dependency>
       <groupId>pentaho-kettle</groupId>
