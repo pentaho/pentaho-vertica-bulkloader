@@ -83,20 +83,60 @@ mode, build exactly one assembly ZIP or specify `vertica.it.plugin-zip` explicit
 The resolver also accepts `--series 10.2.0.11` to select the latest catalog build;
 use `--build` when a specific build is required.
 
-## CI and evidence
+## CI
 
-The [workflow](.github/workflows/integration-tests.yml) supports `10.2` pushes,
-same-repository pull requests, manual dispatch and reusable calls. Inputs select
-the build or series, plugin source, image, optional JDBC file and disposable-user
-MD5 setting. It requires the `k8s` runner, `PDIA_AC_CONTAINER_IMAGE`, registry
-and Maven credentials, a Docker daemon and `/it-conf` containing approved license
-configuration. Protect the `integration-tests` environment with independent
-reviewers. Remote execution has not been validated.
+The [GitHub workflow](.github/workflows/integration-tests.yml) runs on pushes and
+same-repository pull requests to `10.2`, and supports manual dispatch and reusable
+workflow calls. Fork pull requests do not run the credentialed job. Configure
+independent required reviewers for the `integration-tests` environment; review
+the checkout and workflow before granting credentials. Never use
+`pull_request_target` for untrusted code.
 
-Failures require natural launcher exit and expected Vertica error details; the
-120-second watchdog captures diagnostics and treats termination as failure.
-Evidence includes Failsafe results, launcher logs, SQL and process/session state,
-driver provenance and candidate hashes. Review logs before sharing. Derived images
-and `target/stage` and `target/docker` contexts contain license configuration;
-do not publish them. Remove only the specific run's Docker resources and generated
-contexts after use, preserving the original configuration and evidence.
+| Input | Default and behavior |
+| --- | --- |
+| `build` | Optional exact build, e.g. `10.2.0.11-453`; when set it takes precedence over `series`. |
+| `series` | Optional two-part release family or four-part maintenance series; defaults to `10.2.0.11`. |
+| `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
+| `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`10.2.0.11` for 10.2.0.11). |
+| `jdbc_file` | Optional path to another JDBC JAR inside the runner container, such as `/it-conf/other-driver.jar`; the supplied JDBC 6 JAR is the default. |
+| `test_md5_auth` | Enable MD5 for the disposable test user; defaults to `true` for JDBC 6 and can be disabled for another driver. |
+
+The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
+`ARTIFACTORY_BASE_URL` variables, `PENTAHO_CICD_ONE_USER` and
+`PENTAHO_CICD_ONE_KEY` secrets, a Docker daemon, the declared Maven cache mount,
+and the `/it-conf` runner mount. The job image must supply Java 11 for the 10.2
+checkout, Maven, Docker, Bash, `curl` and `jq`; it also needs registry, catalog,
+repository and licensing service access. `/it-conf` provides the license
+configuration and can provide an alternate JDBC JAR selected through `jdbc_file`.
+The workflow preserves existing checkout files. Remote execution on `k8s` has
+**not** been validated.
+
+## Assertions, evidence and cleanup
+
+The seven serial tests cover healthy large-stream EOF, positional non-direct
+mapping, empty input, permission and CHECK failures, Kitchen's error branch, and
+recovery after repeated failures. The separate five-test lifecycle suite adds
+multi-copy EOF and failure, slow finite input, Abort during server-confirmed
+active COPY, and pooled failure/recovery in one Kitchen JVM. Successful launchers
+must exit 0. Expected failures must exit naturally with code 1 and the loader's
+SQL error plus the expected server detail; unexpected cleanup or uncaught
+missing-class errors fail the test. Database assertions verify rows and session
+closure. Each launcher runs in a separate process group. After 120 seconds the
+watchdog sends QUIT for diagnostics and forcibly terminates any remaining process
+group after a timeout; a timeout or forced termination is a failure, never an
+accepted SQL failure.
+
+The platform module's `target/failsafe-reports` and `target/evidence` contain test
+reports, build labels, logs, status and process/session diagnostics; reports and
+top-level build labels are overwritten on the next run. Resolver provenance is in
+`target/runtime/pdi-build-provenance.txt`. CI uploads Failsafe XML/text and
+evidence JSON/log/text for seven days, not Docker contexts or license files. Logs
+should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
+recorded; no automatic whole-image or installed-plugin checksum manifest is claimed.
+
+Derived images and `target/stage` and `target/docker` contexts contain the license
+configuration. Do not publish them. CI attempts run-scoped cleanup even on failure;
+after interrupted local runs remove only that run's containers, network and derived
+image, plus the generated staging/build contexts. Preserve the supplied
+configuration, test evidence and other operators' Docker resources. See the
+[QA summary](integration-test/SP-7583-QA-summary.md) for what remains untested.
