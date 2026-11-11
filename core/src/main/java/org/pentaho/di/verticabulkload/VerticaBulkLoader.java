@@ -14,12 +14,8 @@
 package org.pentaho.di.verticabulkload;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.vertica.core.VConnection;
-import com.vertica.jdbc.SConnection;
 import com.vertica.jdbc.VerticaConnection;
 import com.vertica.jdbc.VerticaCopyStream;
-import com.vertica.support.exceptions.GeneralException;
-import org.apache.commons.dbcp.DelegatingConnection;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
@@ -42,7 +38,6 @@ import org.pentaho.di.verticabulkload.nativebinary.ColumnSpec;
 import org.pentaho.di.verticabulkload.nativebinary.ColumnType;
 import org.pentaho.di.verticabulkload.nativebinary.StreamEncoder;
 
-import javax.sql.PooledConnection;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -427,6 +422,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
         logBasic( "SQL statement interrupted by halt of transformation" );
       } else {
         logError( "SQL Error during statement execution.", e );
+      }
+      if ( !wasStopped ) {
         stopAll();
         setOutputDone();
       }
@@ -684,8 +681,8 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
 
   /**
    * Prevents new COPY operation claims and releases the pipe, then bounds waits for the owned threads.
-   * JDBC cleanup runs separately because cancel, rollback, and disconnect can each block.
-   * A timed-out connection stays leased until the worker and cancellation have exited.
+   * JDBC cleanup runs separately because connection close, rollback, and disconnect can each block.
+   * A timed-out connection stays leased until the worker has exited.
    * Repeated stop/dispose calls reuse the first deadline rather than granting another timeout.
    */
   private void stopWorker() {
@@ -756,17 +753,6 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
   }
 
   private void cleanupDatabase( Database database, Thread workerThread, long deadline ) {
-    Thread cancellation = new Thread( () -> {
-      try {
-        cancelRunningCopy( database );
-      } catch ( SQLException | IllegalStateException e ) {
-        logError( "Unable to cancel the active Vertica COPY operation.", e );
-        setErrors( 1 );
-      }
-    }, "Vertica COPY cancellation" );
-    cancellation.setUncaughtExceptionHandler( Thread.currentThread().getUncaughtExceptionHandler() );
-    cancellation.start();
-
     waitForThreadUntil( workerThread, deadline );
     Connection invalidatedConnection = isAliveOtherThanCurrentThread( workerThread ) ? database.getConnection() : null;
     if ( invalidatedConnection != null ) {
@@ -778,11 +764,10 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       }
     }
     try {
-      // Neither COPY nor cancellation may keep using a connection returned to its pool.
+      // COPY must not keep using a connection returned to its pool.
       if ( workerThread != null ) {
         workerThread.join();
       }
-      cancellation.join();
       // Database.disconnect() may skip a pooled wrapper whose physical connection is already closed.
       try ( invalidatedConnection ) {
         rollbackAndDisconnect( database );
@@ -809,29 +794,6 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
       setErrors( 1 );
     } finally {
       database.disconnect();
-    }
-  }
-
-  /**
-   * Uses the pinned JDBC 6 driver's underlying connection because VerticaCopyStream has no public cancel API.
-   * This may block too, so callers perform it on the daemon cleanup thread.
-   */
-  @VisibleForTesting
-  void cancelRunningCopy( Database database ) throws SQLException {
-    Connection jdbcConnection = database.getConnection();
-    if ( jdbcConnection == null || jdbcConnection.isClosed() ) {
-      return;
-    }
-    VerticaConnection connection = getVerticaConnection( jdbcConnection );
-    if ( connection instanceof SConnection
-      && ( (SConnection) connection ).getDSIConnection() instanceof VConnection ) {
-      try {
-        ( (VConnection) ( (SConnection) connection ).getDSIConnection() ).cancelCurrentStatement();
-      } catch ( GeneralException e ) {
-        throw new SQLException( "Unable to cancel the active Vertica COPY operation.", e );
-      }
-    } else {
-      logDebug( "The Vertica connection does not expose legacy COPY cancellation; timeout will close it instead." );
     }
   }
 
@@ -917,29 +879,11 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
     if ( connection instanceof VerticaConnection ) {
       return (VerticaConnection) connection;
     }
-    Connection underlyingConnection = unwrapConnection( connection );
+    Connection underlyingConnection = connection.unwrap( VerticaConnection.class );
     if ( underlyingConnection instanceof VerticaConnection ) {
       return (VerticaConnection) underlyingConnection;
     }
     throw new IllegalStateException( "Could not retrieve a VerticaConnection from " + connection.getClass().getName() );
-  }
-
-  private Connection unwrapConnection( Connection connection ) throws SQLException {
-    if ( connection instanceof DelegatingConnection ) {
-      return ( (DelegatingConnection) connection ).getInnermostDelegate();
-    }
-    if ( connection instanceof PooledConnection ) {
-      return ( (PooledConnection) connection ).getConnection();
-    }
-    try {
-      if ( connection.isWrapperFor( VerticaConnection.class ) ) {
-        return connection.unwrap( VerticaConnection.class );
-      }
-    } catch ( SQLException e ) {
-      logDebug( "Unable to unwrap the JDBC connection as a VerticaConnection.", e );
-    }
-    // The caller reports an unsupported connection; generic JDBC is not sufficient for VerticaCopyStream.
-    return null;
   }
 
 }
