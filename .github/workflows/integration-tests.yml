@@ -1,0 +1,309 @@
+name: SP-7583 Vertica integration tests
+
+on:
+  pull_request:
+    branches: ['10.2']
+  push:
+    branches: ['10.2']
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Plugin under test (local builds the checkout; bundled uses the distribution plugin)
+        type: choice
+        options: [local, bundled]
+        default: local
+      pdi_image:
+        description: Optional PDI client image override (default follows selected build series)
+        type: string
+        default: ''
+      build:
+        description: Exact PDI build (for example 10.2.0.11-453); empty selects latest in series
+        type: string
+        required: false
+        default: ''
+      series:
+        description: Series for latest; empty selects 10.2.0.11
+        type: string
+        required: false
+        default: ''
+      jdbc_file:
+        description: Optional JDBC JAR path accessible inside the runner container
+        type: string
+        required: false
+        default: ''
+      test_md5_auth:
+        description: Use MD5 for the disposable test user (required by the default JDBC 6 driver)
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      source:
+        description: Plugin under test (local or bundled)
+        type: string
+        default: local
+      pdi_image:
+        description: Optional PDI client image override
+        type: string
+        default: ''
+      build:
+        description: Exact PDI build (for example 10.2.0.11-453); empty selects latest in series
+        type: string
+        default: ''
+      series:
+        description: Series for latest; empty selects 10.2.0.11
+        type: string
+        default: ''
+      jdbc_file:
+        description: Optional JDBC JAR path accessible inside the runner container
+        type: string
+        default: ''
+      test_md5_auth:
+        description: Use MD5 for the disposable test user
+        type: boolean
+        default: true
+    secrets:
+      PENTAHO_CICD_ONE_USER:
+        required: true
+      PENTAHO_CICD_ONE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vertica-integration-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  integration-tests:
+    # Gate the entire job, including private image pulls, credentials and runner mounts.
+    # Configure required reviewers on the integration-tests environment for PR approval.
+    # Never use pull_request_target to execute untrusted checkout code.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: k8s
+    environment: integration-tests
+    timeout-minutes: 60
+    container:
+      image: ${{ vars.PDIA_AC_CONTAINER_IMAGE }}
+      credentials:
+        username: ${{ secrets.PENTAHO_CICD_ONE_USER }}
+        password: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
+      volumes:
+        - /home/runner/caches/pentaho/.m2/repository:/m2_local_cache/
+        # License configuration and optional JDBC overrides are supplied by the runner.
+        - /home/runner/caches/pentaho/vertica-bulkloader-conf:/it-conf:ro
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARTIFACTORY_HOST: ${{ vars.ARTIFACTORY_HOST }}
+      ARTIFACTORY_BASE_URL: ${{ vars.ARTIFACTORY_BASE_URL }}
+      VERTICA_IT_SOURCE: ${{ inputs.source || 'local' }}
+      VERTICA_IT_PDI_IMAGE: ${{ inputs.pdi_image }}
+      VERTICA_IT_BUILD: ${{ inputs.build }}
+      VERTICA_IT_SERIES: ${{ inputs.series }}
+      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file }}
+      VERTICA_IT_TEST_MD5_AUTH: ${{ inputs.test_md5_auth }}
+      # Lowercase Docker-safe identifier shared by verify and the always-run Fabric8 stop.
+      VERTICA_IT_RUN_ID: vbl-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check prerequisites and stage operator-provided conf
+        id: prerequisites
+        run: |
+          set -euo pipefail
+          for tool in java mvn docker curl jq; do command -v "$tool" >/dev/null; done
+          docker info >/dev/null
+          for pom in integration-test/pom.xml integration-test/pentaho-platform/pom.xml; do
+            test -f "$pom" || { echo "::error::Missing standalone Maven integration-test reactor: $pom"; exit 1; }
+          done
+          case "$VERTICA_IT_SOURCE" in
+            local|bundled) ;;
+            *) echo '::error::source must be local or bundled'; exit 1 ;;
+          esac
+          [[ "$VERTICA_IT_RUN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          [[ -z "$VERTICA_IT_BUILD" || "$VERTICA_IT_BUILD" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || {
+            echo '::error::build must be empty or match A.B.C.D-N'; exit 1;
+          }
+          [[ -z "$VERTICA_IT_SERIES" || "$VERTICA_IT_SERIES" =~ ^[0-9]+\.[0-9]+(\.[0-9]+\.[0-9]+)?$ ]] || {
+            echo '::error::series must be empty or match A.B or A.B.C.D'; exit 1;
+          }
+          if [[ -n "$VERTICA_IT_JDBC_FILE" && ( ! -f "$VERTICA_IT_JDBC_FILE" || ! -r "$VERTICA_IT_JDBC_FILE" || ! -s "$VERTICA_IT_JDBC_FILE" ) ]]; then
+            echo '::error::jdbc_file must name a readable, nonempty JAR in the runner container.'
+            exit 1
+          fi
+          umask 077
+          mkdir -p integration-test/conf
+          for file in .elmLicInfo.plt vertica-jdbc.jar; do
+            destination="integration-test/conf/$file"
+            # Preserve files already supplied in the checkout. Only absent files are staged.
+            if [[ ! -e "$destination" && -f "/it-conf/$file" && -r "/it-conf/$file" && -s "/it-conf/$file" ]]; then
+              install -m 600 "/it-conf/$file" "$destination"
+              if [[ "$file" == .elmLicInfo.plt ]]; then
+                echo 'staged_license=true' >> "$GITHUB_OUTPUT"
+              else
+                echo 'staged_driver=true' >> "$GITHUB_OUTPUT"
+              fi
+            fi
+            if [[ "$file" == .elmLicInfo.plt && ( ! -f "$destination" || ! -r "$destination" || ! -s "$destination" ) ]]; then
+              echo "::error::Missing readable license configuration: $destination. Supply an approved file through /it-conf."
+              exit 1
+            fi
+          done
+          printf 'DOCKER_CONFIG=%s/vertica-docker-%s\n' "$RUNNER_TEMP" "$VERTICA_IT_RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Setup Maven settings
+        id: maven-settings
+        uses: ./.github/actions/setup-maven-settings
+        with:
+          m2-directory: ${{ runner.temp }}/vertica-maven-${{ github.run_id }}-${{ github.run_attempt }}
+          artifactory-base-url: ${{ env.ARTIFACTORY_BASE_URL }}
+          artifactory-host: ${{ env.ARTIFACTORY_HOST }}
+          artifactory-user: ${{ secrets.PENTAHO_CICD_ONE_USER }}
+          artifactory-api-key: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
+
+      - name: Login to Artifactory Docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ARTIFACTORY_HOST }}
+          username: ${{ secrets.PENTAHO_CICD_ONE_USER }}
+          password: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
+
+      - name: Build and install checkout plugin
+        if: env.VERTICA_IT_SOURCE == 'local'
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
+            -Dmaven.repo.local=/m2_local_cache/ clean install
+
+      - name: Resolve and verify PDI build
+        id: pdi-build
+        run: |
+          set -euo pipefail
+          series="${VERTICA_IT_SERIES:-10.2.0.11}"
+          args=(--build "$VERTICA_IT_BUILD")
+          if [[ -n "$series" ]]; then args+=(--series "$series"); fi
+          bash integration-test/resolve-pdi-build.sh "${args[@]}"
+
+      - name: Select PDI base image
+        env:
+          RESOLVED_BUILD: ${{ steps.pdi-build.outputs.build }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VERTICA_IT_PDI_IMAGE" ]]; then
+            series=${RESOLVED_BUILD%-*}
+            if [[ "$series" == 10.* ]]; then
+              tag="$series"
+            else
+              tag="${series%%.*}"
+              remainder=${series#*.}
+              tag="$tag.${remainder%%.*}"
+            fi
+            printf 'VERTICA_IT_PDI_IMAGE=repo.pentaho.com/pnt-docker/automation/pdi-client:%s\n' "$tag" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run Maven Fabric8 Java integration tests
+        id: integration-tests
+        env:
+          VERTICA_IT_PDI_ARCHIVE: ${{ steps.pdi-build.outputs.archive }}
+          VERTICA_IT_RESOLVED_BUILD: ${{ steps.pdi-build.outputs.build }}
+        run: |
+          set -euo pipefail
+          args=(
+            "-Dvertica.it.source=$VERTICA_IT_SOURCE"
+            "-Dvertica.it.pdi-image=$VERTICA_IT_PDI_IMAGE"
+            "-Dvertica.it.run-id=$VERTICA_IT_RUN_ID"
+            "-Dvertica.it.pdi-build=$VERTICA_IT_RESOLVED_BUILD"
+            "-Dvertica.it.pdi-archive=$VERTICA_IT_PDI_ARCHIVE"
+            "-Dvertica.it.test-md5-auth=${VERTICA_IT_TEST_MD5_AUTH:-true}"
+          )
+          if [[ -n "$VERTICA_IT_JDBC_FILE" ]]; then args+=("-Dvertica.it.jdbc-file=$VERTICA_IT_JDBC_FILE"); fi
+          mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
+            -Dmaven.repo.local=/m2_local_cache/ \
+            -f integration-test/pom.xml verify -DrunIntegrationTests "${args[@]}"
+
+      - name: Stop only this run's Fabric8 resources
+        if: always() && steps.integration-tests.outcome != 'skipped' && steps.maven-settings.outcome == 'success'
+        env:
+          VERTICA_IT_PDI_ARCHIVE: ${{ steps.pdi-build.outputs.archive }}
+          VERTICA_IT_RESOLVED_BUILD: ${{ steps.pdi-build.outputs.build }}
+        run: |
+          set -euo pipefail
+          args=(
+            "-Dvertica.it.source=$VERTICA_IT_SOURCE"
+            "-Dvertica.it.pdi-image=$VERTICA_IT_PDI_IMAGE"
+            "-Dvertica.it.run-id=$VERTICA_IT_RUN_ID"
+            "-Dvertica.it.pdi-build=$VERTICA_IT_RESOLVED_BUILD"
+            "-Dvertica.it.pdi-archive=$VERTICA_IT_PDI_ARCHIVE"
+          )
+          # Direct goal, not the lifecycle: never start containers or rerun tests during cleanup.
+          # The platform POM scopes container/network/image names to vertica.it.run-id.
+          # No Docker prune, all-container removal or image upload on this shared daemon.
+          mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
+            -Dmaven.repo.local=/m2_local_cache/ \
+            -f integration-test/pentaho-platform/pom.xml docker:stop \
+            -DrunIntegrationTests -Ddocker.keepRunning=false "${args[@]}"
+
+      - name: Remove remaining run-scoped Docker resources
+        if: always()
+        run: |
+          # Exact names also cover interrupted starts and separate Fabric8 invocations.
+          for name in "vertica-it-pdi-$VERTICA_IT_RUN_ID" "vertica-it-db-$VERTICA_IT_RUN_ID"; do
+            if docker container inspect "$name" >/dev/null 2>&1; then docker rm -f "$name"; fi
+          done
+          if docker network inspect "vertica-it-$VERTICA_IT_RUN_ID" >/dev/null 2>&1; then
+            docker network rm "vertica-it-$VERTICA_IT_RUN_ID"
+          fi
+
+      - name: Preserve resolved build provenance
+        if: always() && steps.pdi-build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p integration-test/pentaho-platform/target/evidence
+          cp integration-test/pentaho-platform/target/runtime/pdi-build-provenance.txt \
+            integration-test/pentaho-platform/target/evidence/pdi-build-provenance.txt
+
+      - name: Upload Failsafe reports and test evidence only
+        if: always() && (steps.integration-tests.outcome != 'skipped' || steps.pdi-build.outcome == 'success')
+        uses: actions/upload-artifact@v4
+        with:
+          name: vertica-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            integration-test/pentaho-platform/target/failsafe-reports/*.xml
+            integration-test/pentaho-platform/target/failsafe-reports/*.txt
+            integration-test/pentaho-platform/target/evidence/**/*.json
+            integration-test/pentaho-platform/target/evidence/**/*.log
+            integration-test/pentaho-platform/target/evidence/**/*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Remove run-local derived image
+        if: always()
+        run: |
+          set -euo pipefail
+          image="vertica-bulkloader-it:${VERTICA_IT_RUN_ID}"
+          if docker image inspect "$image" >/dev/null 2>&1; then
+            docker image rm -- "$image"
+          fi
+
+      - name: Remove staged conf and run-local credentials
+        if: always()
+        env:
+          STAGED_LICENSE: ${{ steps.prerequisites.outputs.staged_license }}
+          STAGED_DRIVER: ${{ steps.prerequisites.outputs.staged_driver }}
+        run: |
+          set -euo pipefail
+          if [[ "$STAGED_LICENSE" == true ]]; then rm -f -- integration-test/conf/.elmLicInfo.plt; fi
+          if [[ "$STAGED_DRIVER" == true ]]; then rm -f -- integration-test/conf/vertica-jdbc.jar; fi
+          # Do not touch the read-only persistent conf mount or shared Maven cache.
+          rm -rf -- integration-test/pentaho-platform/target/stage \
+            integration-test/pentaho-platform/target/docker \
+            "$RUNNER_TEMP/vertica-docker-$VERTICA_IT_RUN_ID" \
+            "$RUNNER_TEMP/vertica-maven-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"

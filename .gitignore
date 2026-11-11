@@ -1,4 +1,7 @@
 .idea/
 *.iml
 target/
+integration-test/conf/.elmLicInfo.plt
+integration-test/conf/*.jar
+!integration-test/conf/vertica-jdbc.jar
 
