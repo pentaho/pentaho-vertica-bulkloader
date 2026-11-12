@@ -5,17 +5,43 @@
 [SP-7583](https://pentaho-eng.atlassian.net/browse/SP-7583) concerns Vertica
 Bulk Loader hangs after certain Vertica SQL exceptions. The expected behavior is
 natural step and transformation failure, no remaining worker threads, and job
-error handling without manual termination. The Jira comment identifies
-`10.2.0.11-453` as a build containing the fix.
+error handling without manual termination. The latest Jira build comment
+identifies `10.2.0.11-456` (SP RC 18) as containing the follow-up. The 10.2
+scope includes PR #101 (`6e9c9630`), PR #105 (`cc313f0b`) and JDBC 24 follow-up
+PR #109 (`941639a6`).
 
-The build 453 tests provide partial evidence, not full acceptance. With the
-supplied JDBC 6 driver both plugin variants passed 11 of 12 scenarios; pooled
-recovery failed before COPY. With the automation image's JDBC 9.2.1-0 driver both
-variants passed 5 of 12; six failure/Abort scenarios reported cleanup errors and
-the pooled scenario timed out. Original cluster-health faults, the exact pooled
-lease race, Spoon Stop, slow COPY finalization and remote CI remain unvalidated.
+On November 12, 2026, build 456 passed all 12 integration scenarios with both
+the published bundled plugin and the rebased 10.2 candidate, using the updated
+automation image's JDBC 24.4 driver and normal authentication. This is not full
+acceptance: original cluster-health faults, the exact pooled lease race, Spoon
+Stop, slow COPY finalization and remote CI remain unvalidated.
 
 ## Automated results
+
+| Plugin | Integration result | Maven duration / finish (UTC) |
+| --- | --- | --- |
+| Build 456 bundled | 12 passed, 0 failed, 0 skipped | 3:31 / 14:43:43 |
+| Rebased 10.2 candidate | 12 passed, 0 failed, 0 skipped | 4:22 / 14:48:25 |
+
+The Java 11 candidate build also passed 72 mock-based and other unit tests,
+including both pooled lease cleanup orderings. These do not prove a real pooled
+forced-stop race. A focused pooled recovery probe passed before the full runs;
+its assertion uses the pool-creation message observed in the 10.2 runtime.
+
+The integration suites cover 100,000-row healthy load, positional non-direct
+mapping, empty input, COPY-start permission denial, server CHECK rejection,
+Kitchen failure handling, repeated failure/recovery, multi-copy EOF, slow finite
+input, multi-copy failure, Abort during active COPY and pooled failure/recovery
+in one Kitchen JVM. The latter does not prove reuse of the same physical
+connection or exercise the competing-borrower forced-stop race.
+
+### Historical build 453 results
+
+The build 453 tests provided partial evidence, not full acceptance. With JDBC 6
+both variants passed 11 of 12 scenarios; pooled recovery failed before COPY.
+With the earlier automation image's JDBC 9.2.1-0 driver both variants passed
+5 of 12; six failure/Abort scenarios reported cleanup errors and pooled
+recovery timed out. These are historical results, not build 456 results.
 
 On November 11, 2026, the real integration suites ran against the exact PDI
 `10.2.0.11-453` archive, Vertica CE `24.1.0-0`, and either the bundled plugin or
@@ -71,7 +97,27 @@ Kitchen did not terminate naturally. The watchdog captured a thread dump and
 terminated the process after 120 seconds, yielding exit `124`. This is a failure,
 not evidence of recovery, and does not establish the underlying lease race.
 
-## Provenance and evidence
+## Build 456 provenance and evidence
+
+| Item | Tested value |
+| --- | --- |
+| PDI archive | `10.2.0.11-456`; catalog SHA-1 `f78d41b07fdef3dffd9bf40d174a88dae3702742`; SHA-256 `5f9e4ecdf5d1b7fbfde8b58fdb46c38021c5a8f26d52764846045f7b496ab06e` |
+| PDI image | `repo.pentaho.com/pnt-docker/automation/pdi-client:10.2.0.11`; image ID `sha256:d1aa367d5ac25fcbdf8ca168eb52fd15068fc1ea52a96289c455d95532659d5d` |
+| JDBC image JAR | `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637` |
+| Candidate assembly | SHA-256 `30293cd34ec619c5c50445b694e0018da83687fe660d62eb95a959bdf404c9bc` |
+| Vertica | `repo.pentaho.com/docker/vertica-ce:24.1.0-0`; image ID `sha256:9248dbc3ee429827f89a96758b88d7a286762d50918e2e4bbfcda2dd18cb1cd9` |
+| Runtime | Linux x86_64, Ubuntu 22.04.5, OpenJDK `17.0.21.0.3`; Docker amd64 emulation on macOS 15.8.2 ARM64 |
+
+The image JAR was preserved across archive replacement and recorded for both
+test classes in each run. Each final runtime had that JAR in `lib`; no JVM
+class-load trace was captured, so this is staged-driver provenance rather than
+proof of the loaded class origin. The local `target/evidence/sp7583-456-bundled`
+and `sp7583-456-candidate` directories contain separate reports, logs and build
+provenance. Generated evidence is not committed; review logs before sharing.
+The ELM file configures a license service, not an offline entitlement; valid
+entitlement and service connectivity were required.
+
+### Historical build 453 provenance
 
 | Item | Tested value |
 | --- | --- |
@@ -97,8 +143,8 @@ entitlement; valid entitlement and service connectivity were required.
 The tests exercise healthy and empty loads, permission and CHECK failures,
 Kitchen error handling, repeated failures and recovery, multiple copies, slow
 input, Abort during server-confirmed active COPY and pooled recovery. The
-permission-denied and CHECK tests with JDBC 6 demonstrate natural failure for
-those particular errors; the Kitchen failure branch checks an audit marker and
+permission-denied and CHECK tests demonstrate natural failure for those
+particular errors; the Kitchen failure branch checks an audit marker and
 propagated job failure. The suite checks test-user sessions but does not prove
 the absence of every in-JVM thread leak or cover every SQL exception.
 

@@ -27,8 +27,9 @@ the selected distribution with the assembly built from this checkout.
   or selected using `-Dvertica.it.license-file=/absolute/path`. This file is
   ignored by Git; do not print or upload it. A valid entitlement and service
   connectivity are required.
-- The supplied JDBC 6 JAR in [integration-test/conf](integration-test/conf/README.md)
-  is the default. Neither the driver nor the license configuration is downloaded.
+- A Vertica JDBC driver in the selected distribution or base image, or an
+  explicit existing driver JAR. Neither the driver nor the license configuration
+  is downloaded. See [configuration](integration-test/conf/README.md).
 
 ## Run locally
 
@@ -37,7 +38,7 @@ the trusted archive URL and records SHA-256 provenance. Exact builds are cached
 in `integration-test/pentaho-platform/target/runtime`.
 
 ```bash
-resolution=$(bash integration-test/resolve-pdi-build.sh --build 10.2.0.11-453)
+resolution=$(bash integration-test/resolve-pdi-build.sh --build 10.2.0.11-456)
 build=$(printf '%s\n' "$resolution" | sed -n 's/^build=//p')
 archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
 
@@ -45,28 +46,23 @@ archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=bundled \
   -Dvertica.it.pdi-build="$build" -Dvertica.it.pdi-archive="$archive" \
-  -Dvertica.it.run-id=sp7583-bundled -Dvertica.it.test-md5-auth=true
+  -Dvertica.it.run-id=sp7583-bundled -Dvertica.it.test-md5-auth=false
 
 # Build and test the 10.2 plugin from this checkout.
 mvn --batch-mode --no-transfer-progress install
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=local \
   -Dvertica.it.pdi-build="$build" -Dvertica.it.pdi-archive="$archive" \
-  -Dvertica.it.run-id=sp7583-local -Dvertica.it.test-md5-auth=true
+  -Dvertica.it.run-id=sp7583-local -Dvertica.it.test-md5-auth=false
 ```
 
-Both examples use JDBC `06.00.0000` and enable MD5 only for the disposable
-`qa_loader` user because that driver cannot authenticate against the test
-server's default SHA-512. MD5 is weak and must not be used on shared or
-production databases. Maven's MD5 option defaults to `false`.
-
-For a different existing driver, add `-Dvertica.it.jdbc-file=/absolute/path/to/driver.jar`.
-To exercise the selected distribution's driver, or the image driver when the
-distribution has none, set `vertica.it.jdbc-file` to a nonexistent path and
-disable MD5. This intentionally invokes the fallback; verify the recorded driver
-source and checksum. The build 453 archive has no Vertica driver in its `lib`
-directory, so the tested image supplies JDBC `9.2.1-0`. Its results and limitations
-are documented separately in the QA summary.
+The build 456 archive has no Vertica driver in its `lib` directory. The tested
+automation image supplies JDBC `24.4.0-0`, preserved when the runtime is replaced.
+Verify the recorded source and checksum: mutable image tags can change. To select
+another driver, add `-Dvertica.it.jdbc-file=/absolute/path/to/driver.jar`; a
+nonexistent override fails. MD5 defaults to `false` and is only needed for
+isolated historical tests with JDBC 6. MD5 is weak and must not be used on shared
+or production databases.
 
 Use a unique lowercase Docker-safe run ID and separate evidence directories for
 each run, for example `-Dvertica.it.evidence-dir=$PWD/integration-test/pentaho-platform/target/evidence/my-run`.
@@ -94,12 +90,12 @@ the checkout and workflow before granting credentials. Never use
 
 | Input | Default and behavior |
 | --- | --- |
-| `build` | Optional exact build, e.g. `10.2.0.11-453`; when set it takes precedence over `series`. |
+| `build` | Optional exact build, e.g. `10.2.0.11-456`; when set it takes precedence over `series`. |
 | `series` | Optional two-part release family or four-part maintenance series; defaults to `10.2.0.11`. |
 | `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
 | `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`10.2.0.11` for 10.2.0.11). |
-| `jdbc_file` | Optional path to another JDBC JAR inside the runner container, such as `/it-conf/other-driver.jar`; the supplied JDBC 6 JAR is the default. |
-| `test_md5_auth` | Enable MD5 for the disposable test user; defaults to `true` for JDBC 6 and can be disabled for another driver. |
+| `jdbc_file` | Optional path to an existing JDBC JAR inside the runner container, such as `/it-conf/other-driver.jar`; otherwise use the distribution or image driver. |
+| `test_md5_auth` | Enable MD5 for the disposable test user for isolated legacy-driver tests; defaults to `false`. |
 
 The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 `ARTIFACTORY_BASE_URL` variables, `PENTAHO_CICD_ONE_USER` and
@@ -132,7 +128,8 @@ top-level build labels are overwritten on the next run. Resolver provenance is i
 `target/runtime/pdi-build-provenance.txt`. CI uploads Failsafe XML/text and
 evidence JSON/log/text for seven days, not Docker contexts or license files. Logs
 should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
-recorded; no automatic whole-image or installed-plugin checksum manifest is claimed.
+recorded; no JVM class-load trace or automatic whole-image or installed-plugin
+checksum manifest is claimed.
 
 Derived images and `target/stage` and `target/docker` contexts contain the license
 configuration. Do not publish them. CI attempts run-scoped cleanup even on failure;

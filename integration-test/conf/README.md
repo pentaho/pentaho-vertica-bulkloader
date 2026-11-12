@@ -6,15 +6,15 @@ configuration, not an offline entitlement; service access and a valid
 entitlement are required. The file is ignored by Git and must not be printed or
 uploaded.
 
-The supplied [vertica-jdbc.jar](vertica-jdbc.jar) is JDBC `06.00.0000` and is
-the default. Select another JAR with `-Dvertica.it.jdbc-file=/absolute/path`.
-If the selected file is absent, the harness falls back to the distribution or
-base-image driver; verify the recorded source and checksum. Other JARs in this
-directory are ignored by Git.
+No JDBC JAR is tracked here. By default the harness uses the distribution's
+driver, or the automation image's driver when the distribution has none.
+Select an existing JAR with `-Dvertica.it.jdbc-file=/absolute/path`; a missing
+explicit override fails staging. JARs in this directory are ignored by Git.
+Verify the recorded source and checksum for each run.
 
-JDBC 6 requires `-Dvertica.it.test-md5-auth=true` for the disposable test user
-on the tested Vertica server. MD5 is weak and is not suitable for a shared or
-production database. The default is `false`; CI enables it by default for the
-supplied driver. Neither JDBC nor license configuration is downloaded by the
-suite. See the [execution guide](../../integration-tests-README.md) and
+Historical JDBC 6 tests require `-Dvertica.it.test-md5-auth=true` for the
+disposable test user on the tested Vertica server. MD5 is weak and is not
+suitable for a shared or production database. The default is `false` locally
+and in CI. Neither JDBC nor license configuration is downloaded by the suite.
+See the [execution guide](../../integration-tests-README.md) and
 [SP-7583 QA summary](../SP-7583-QA-summary.md).
