@@ -5,9 +5,12 @@
 [PDI-20802](https://pentaho-eng.atlassian.net/browse/PDI-20802) addresses Vertica
 Bulk Loader hangs after certain Vertica SQL exceptions. The expected behavior is
 controlled step and transformation failure, execution of the job error branch,
-and termination without manual intervention. The fix was merged to master in
+and termination without manual intervention. The initial fix was merged to master in
 [PR #104](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/104), commit
-`528bd20ebd85c20502596900be5bad5d07ea992b`.
+`528bd20ebd85c20502596900be5bad5d07ea992b`. The follow-up
+[PR #107](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/107), commit
+`b688e6672261469e9b285c79199d354edc98a285`, updated the JDBC dependency to version
+24 and changed the loader's connection handling.
 
 **Latest result: both plugin variants passed all 12 integration tests on PDI
 11.1.0.0-468 with JDBC 24.4 and default authentication.** The earlier 461 runs
