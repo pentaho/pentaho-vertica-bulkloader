@@ -27,12 +27,13 @@ and default SHA-512 authentication. No JDBC override was configured.
 
 | Provenance | Value |
 | --- | --- |
-| PDI archive | `11.0.0.4-332`; catalog SHA-1 `e3d2f791aa442c4040fd024e098668b2ddc8ea22`; SHA-256 `906814a1bfef1b8c7364bf46ae0d1afa5e3869a8fbb3e476bb91470203cf1549` |
+| PDI archive | `pdi-ee-client-11.0.0.4-332.zip`; catalog SHA-1 `e3d2f791aa442c4040fd024e098668b2ddc8ea22`; SHA-256 `906814a1bfef1b8c7364bf46ae0d1afa5e3869a8fbb3e476bb91470203cf1549` |
+| Bundled plugin | Vertica Bulk Loader included in the verified `11.0.0.4-332` archive |
+| Candidate assembly | `vertica-bulkloader-plugin-11.0.0.0-SNAPSHOT.zip`, built from the 11.0 branch at `2ac85069`; SHA-256 `98b285f300d5e227638141b6a279c25eae733b1645f393a976c7f390a29b9c59` |
 | PDI automation image | `repo.pentaho.com/pnt-docker/automation/pdi-client:11.0.0.4`; digest and image ID `sha256:2f90205ff816ae2b51ee927363444b837001fce73af0efbe31424e547fd46efe` |
-| JDBC image JAR | `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637` |
-| Candidate assembly used in integration run | SHA-256 `98b285f300d5e227638141b6a279c25eae733b1645f393a976c7f390a29b9c59` |
+| Staged Vertica JDBC | Image-supplied `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`; default authentication, no JDBC override |
 | PDI runtime | Ubuntu 22.04.5 LTS, Linux x86-64, OpenJDK `21.0.13.0.3`; Docker amd64 emulation on macOS 15.8.2 ARM64 |
-| Database | Vertica CE `24.1.0-0` |
+| Vertica | `repo.pentaho.com/docker/vertica-ce:24.1.0-0`; image ID not captured in run evidence |
 
 The exact 332 archive replaces the image runtime and has no Vertica JDBC JAR in
 `lib`; the harness preserved the image's JDBC 24.4 JAR. Both test classes in both
