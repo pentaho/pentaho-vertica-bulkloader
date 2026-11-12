@@ -23,6 +23,27 @@ Stop, slow COPY finalization and remote CI remain unvalidated.
 | Build 456 bundled | 12 passed, 0 failed, 0 skipped | 3:31 / 14:43:43 |
 | Rebased 10.2 candidate | 12 passed, 0 failed, 0 skipped | 4:22 / 14:48:25 |
 
+| Provenance | Value |
+| --- | --- |
+| PDI archive | `pdi-ee-client-10.2.0.11-456.zip`; catalog SHA-1 `f78d41b07fdef3dffd9bf40d174a88dae3702742`; SHA-256 `5f9e4ecdf5d1b7fbfde8b58fdb46c38021c5a8f26d52764846045f7b496ab06e` |
+| Bundled plugin | Vertica Bulk Loader included in the verified `10.2.0.11-456` archive |
+| Candidate assembly | `vertica-bulkloader-plugin-10.2.0.0-SNAPSHOT.zip`, built from the 10.2 branch at `941639a6`; SHA-256 `30293cd34ec619c5c50445b694e0018da83687fe660d62eb95a959bdf404c9bc` |
+| PDI automation image | `repo.pentaho.com/pnt-docker/automation/pdi-client:10.2.0.11`; image ID `sha256:d1aa367d5ac25fcbdf8ca168eb52fd15068fc1ea52a96289c455d95532659d5d` |
+| Staged Vertica JDBC | Image-supplied `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`; default authentication, no JDBC override |
+| Vertica | `repo.pentaho.com/docker/vertica-ce:24.1.0-0`; image ID `sha256:9248dbc3ee429827f89a96758b88d7a286762d50918e2e4bbfcda2dd18cb1cd9` |
+| Runtime | Linux x86_64, Ubuntu 22.04.5, OpenJDK `17.0.21.0.3`; Docker amd64 emulation on macOS 15.8.2 ARM64 |
+
+The resolver verified the archive against the published catalog checksum. The
+archive has no Vertica JDBC JAR in `lib`, so the image driver was preserved
+across archive replacement and recorded for both test classes in each run.
+Each final runtime had that JAR in `lib`; no JVM
+class-load trace was captured, so this is staged-driver provenance rather than
+proof of the loaded class origin. The local `target/evidence/sp7583-456-bundled`
+and `sp7583-456-candidate` directories contain separate reports, logs and build
+provenance. Generated evidence is not committed; review logs before sharing.
+The ELM file configures a license service, not an offline entitlement; valid
+entitlement and service connectivity were required.
+
 The Java 11 candidate build also passed 72 mock-based and other unit tests,
 including both pooled lease cleanup orderings. These do not prove a real pooled
 forced-stop race. A focused pooled recovery probe passed before the full runs;
@@ -96,26 +117,6 @@ threw `NoClassDefFoundError: org/apache/commons/dbcp/DelegatingConnection`, and
 Kitchen did not terminate naturally. The watchdog captured a thread dump and
 terminated the process after 120 seconds, yielding exit `124`. This is a failure,
 not evidence of recovery, and does not establish the underlying lease race.
-
-## Build 456 provenance and evidence
-
-| Item | Tested value |
-| --- | --- |
-| PDI archive | `10.2.0.11-456`; catalog SHA-1 `f78d41b07fdef3dffd9bf40d174a88dae3702742`; SHA-256 `5f9e4ecdf5d1b7fbfde8b58fdb46c38021c5a8f26d52764846045f7b496ab06e` |
-| PDI image | `repo.pentaho.com/pnt-docker/automation/pdi-client:10.2.0.11`; image ID `sha256:d1aa367d5ac25fcbdf8ca168eb52fd15068fc1ea52a96289c455d95532659d5d` |
-| JDBC image JAR | `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637` |
-| Candidate assembly | SHA-256 `30293cd34ec619c5c50445b694e0018da83687fe660d62eb95a959bdf404c9bc` |
-| Vertica | `repo.pentaho.com/docker/vertica-ce:24.1.0-0`; image ID `sha256:9248dbc3ee429827f89a96758b88d7a286762d50918e2e4bbfcda2dd18cb1cd9` |
-| Runtime | Linux x86_64, Ubuntu 22.04.5, OpenJDK `17.0.21.0.3`; Docker amd64 emulation on macOS 15.8.2 ARM64 |
-
-The image JAR was preserved across archive replacement and recorded for both
-test classes in each run. Each final runtime had that JAR in `lib`; no JVM
-class-load trace was captured, so this is staged-driver provenance rather than
-proof of the loaded class origin. The local `target/evidence/sp7583-456-bundled`
-and `sp7583-456-candidate` directories contain separate reports, logs and build
-provenance. Generated evidence is not committed; review logs before sharing.
-The ELM file configures a license service, not an offline entitlement; valid
-entitlement and service connectivity were required.
 
 ### Historical build 453 provenance
 
