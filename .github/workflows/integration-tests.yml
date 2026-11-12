@@ -2,9 +2,9 @@ name: Vertica integration tests
 
 on:
   pull_request:
-    branches: ['10.2', '11.0', '11.1', master, main]
+    branches: [master]
   push:
-    branches: ['10.2', '11.0', '11.1', master, main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       source:

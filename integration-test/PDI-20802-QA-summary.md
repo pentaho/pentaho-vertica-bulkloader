@@ -161,8 +161,8 @@ The local ELM file configures a license-service connection, not an offline
 entitlement; service access and a valid entitlement are required. No license or
 JDBC driver is downloaded. The resolver verified the 461 archive against the
 catalog. On November 5, latest family resolution selected `11.1.0.0-461` for
-`11.1`, `11.0.0.4-328` for `11.0`, and `10.2.0.11-452` for `10.2`; only 461 was
-integration-tested at that point. Latest can change; these are not fixed defaults.
+`11.1`, which was integration-tested at that point. Latest can change; this is
+not a fixed default.
 
 Local generated evidence is retained under the platform module's `target/evidence`
 in separate `pdi20802-461-local` and `pdi20802-461-bundled` directories. Each
@@ -343,8 +343,7 @@ not establish whether the pooled-wrapper race is fixed.
 **Not run:** forced stop or cancellation during an active COPY where COPY and
 the cancellation operation outlive the shutdown deadline. The
 [master review follow-up](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/104)
-and [10.2 backport](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/105)
-address a race in which returning the pooled wrapper early permits another load
+addresses a race in which returning the pooled wrapper early permits another load
 to borrow a connection still used by the old worker. Closing the physical
 connection at the deadline must not release that wrapper until **both** COPY
 and cancellation have exited.

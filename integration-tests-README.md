@@ -40,22 +40,21 @@ the plugin built from the checkout.
 ## Run locally
 
 Run from the repository root with a JDK appropriate for the checkout. The resolver
-searches the official catalog by version. For a two-part family such as `11.0`, it
+searches the official catalog by version. For a two-part family such as `11.1`, it
 chooses the highest numeric maintenance series and then the highest build; a
-four-part series such as `11.0.0.0` limits selection to that series. An exact
+four-part series such as `11.1.0.0` limits selection to that series. An exact
 `--build` overrides `--series`. The resolver downloads the distribution if
 necessary, verifies its published SHA-1 or SHA-256, rejects unexpected archive
 URLs and records SHA-256 provenance.
 Archives are cached in the platform module's `target/runtime`.
 
 ```bash
-# Select latest in 11.1; use 11.0 or 10.2 for those release lines.
+# Select latest in 11.1.
 resolution=$(bash integration-test/resolve-pdi-build.sh --series 11.1)
 # To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.1.0.0-468)
 build=$(printf '%s\n' "$resolution" | sed -n 's/^build=//p')
 archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
 image=repo.pentaho.com/pnt-docker/automation/pdi-client:11.1
-# For 11.0 use :11.0; for 10.2.0.11 use :10.2.0.11.
 
 # Bundled plugin from the exact distribution.
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
@@ -105,9 +104,13 @@ pooled-load failures. Do not interpret failures as expected passes or suppress t
 
 ## CI
 
-[The GitHub workflow](.github/workflows/integration-tests.yml) runs on pushes and
-same-repository PRs to `10.2`, `11.0`, `11.1`, `master` or `main`, and supports manual dispatch
-and reusable workflow calls. Fork PRs do not run the credentialed job. Configure
+[The GitHub workflow](.github/workflows/integration-tests.yml) runs on pushes to
+`master` and same-repository PRs targeting `master`; pushes to the test branch do
+not trigger it. It also supports manual dispatch and reusable workflow calls.
+Build and series inputs are not restricted by the automatic branch filters:
+`bundled` tests the selected distribution's plugin, while `local` builds the
+checkout's plugin even when a different PDI build is selected. Fork PRs do not run
+the credentialed job. Configure
 independent required reviewers for the `integration-tests` environment; review
 the checkout and workflow before granting credentials. Never use
 `pull_request_target` for untrusted code.
@@ -117,7 +120,7 @@ the checkout and workflow before granting credentials. Never use
 | `build` | Optional exact build, e.g. `11.1.0.0-468`; when set it takes precedence over `series`. |
 | `series` | Optional two-part release family or four-part maintenance series for latest; when empty, derive the family from the checkout's Maven project version. |
 | `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
-| `pdi_image` | Optional override or immutable digest; otherwise infer `11.1`, `11.0` or `10.2.0.11` from the selected build. |
+| `pdi_image` | Optional override or immutable digest; otherwise infer the image tag from the selected build. |
 | `jdbc_file` | Optional existing JDBC JAR inside the runner container, such as `/it-conf/other-driver.jar`; otherwise use the runtime or image driver. |
 | `test_md5_auth` | Enable MD5 for the disposable test user for compatible legacy-driver tests; defaults to `false`. |
 
