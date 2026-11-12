@@ -43,10 +43,13 @@ physical connection or the forced-stop pool-lease race.
 
 | Provenance | Value |
 | --- | --- |
-| PDI archive | `11.1.0.0-468`; catalog SHA-1 `518c733d232de9b605f0178f2cbd09a5a167f060`; SHA-256 `dfe51d3787aed8b90f29816d79e7d9bdc85d93708e7bf246aefe733f25a98ef9` |
+| PDI archive | `pdi-ee-client-11.1.0.0-468.zip`; catalog SHA-1 `518c733d232de9b605f0178f2cbd09a5a167f060`; SHA-256 `dfe51d3787aed8b90f29816d79e7d9bdc85d93708e7bf246aefe733f25a98ef9` |
+| Bundled plugin | Vertica Bulk Loader included in the verified `11.1.0.0-468` archive |
+| Candidate assembly | `vertica-bulkloader-plugin-11.1.0.0-SNAPSHOT.zip`, built from master at `b688e667`; SHA-256 `c49d705e43d196f6a30fa333c3f454a9a1e5ce9c9177c702f9332a52c3bc50d1` |
 | PDI base image | `repo.pentaho.com/pnt-docker/automation/pdi-client:11.1`, image ID and repository digest `sha256:f138c0cbc75245022430f9123c1f16f1f740b0b7ebc8026f43a9f8f3a4b3dfc6` |
-| Candidate assembly | `vertica-bulkloader-plugin-11.1.0.0-SNAPSHOT.zip`; SHA-256 `c49d705e43d196f6a30fa333c3f454a9a1e5ce9c9177c702f9332a52c3bc50d1` |
-| Staged Vertica JDBC | Image-supplied `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`; manifest version `24.04.0000` |
+| Staged Vertica JDBC | Image-supplied `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`; manifest version `24.04.0000`; default authentication, no JDBC override |
+| Vertica | `repo.pentaho.com/docker/vertica-ce:24.1.0-0`; image ID not captured in run evidence |
+| Runtime | Linux x86_64, Ubuntu 24.04.5, OpenJDK `21.0.13.0.3`; Docker amd64 emulation on macOS 15.8.2 ARM64 |
 
 The 468 archive contained no Vertica JDBC JAR in its `lib` directory, so the
 harness preserved the image driver during runtime replacement. Both test classes
