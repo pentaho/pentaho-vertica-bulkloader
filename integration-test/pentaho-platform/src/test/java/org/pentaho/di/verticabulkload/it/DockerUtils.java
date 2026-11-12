@@ -64,7 +64,8 @@ final class DockerUtils {
     List<String> command = new ArrayList<>();
     command.add( "docker" );
     command.addAll( Arrays.asList( arguments ) );
-    Files.write( log.resolveSibling( log.getFileName() + ".command" ), command, StandardCharsets.UTF_8 );
+    Files.write( log.resolveSibling( log.getFileName() + ".command" ), evidenceCommand( command ),
+      StandardCharsets.UTF_8 );
     Process process = new ProcessBuilder( command ).redirectErrorStream( true ).redirectOutput( log.toFile() ).start();
     boolean completed = false;
     try {
@@ -85,5 +86,16 @@ final class DockerUtils {
       Files.writeString( log.resolveSibling( log.getFileName() + ".status" ),
         completed ? "exit=" + process.exitValue() : "HOST_TIMEOUT_OR_INTERRUPTION", StandardCharsets.UTF_8 );
     }
+  }
+
+  static List<String> evidenceCommand( List<String> command ) {
+    List<String> recorded = new ArrayList<>( command );
+    if ( recorded.contains( "/opt/vertica/bin/vsql" ) ) {
+      int sqlOption = recorded.indexOf( "-c" );
+      if ( sqlOption >= 0 && sqlOption + 1 < recorded.size() ) {
+        recorded.set( sqlOption + 1, "[SQL redacted]" );
+      }
+    }
+    return recorded;
   }
 }
