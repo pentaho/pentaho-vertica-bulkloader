@@ -126,7 +126,7 @@ The platform module's `target/failsafe-reports` and `target/evidence` contain te
 reports, build labels, logs, status and process/session diagnostics; reports and
 top-level build labels are overwritten on the next run. Resolver provenance is in
 `target/runtime/pdi-build-provenance.txt`. CI uploads Failsafe XML/text and
-evidence JSON/log/text for seven days, not Docker contexts or license files. Logs
+evidence JSON/log/text for 30 days, not Docker contexts or license files. Logs
 should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
 recorded; no JVM class-load trace or automatic whole-image or installed-plugin
 checksum manifest is claimed.
