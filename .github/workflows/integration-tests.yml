@@ -104,7 +104,7 @@ jobs:
       VERTICA_IT_PDI_IMAGE: ${{ inputs.pdi_image }}
       VERTICA_IT_BUILD: ${{ inputs.build }}
       VERTICA_IT_SERIES: ${{ inputs.series }}
-      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file || vars.VERTICA_IT_JDBC_FILE }}
+      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file }}
       VERTICA_IT_TEST_MD5_AUTH: ${{ inputs.test_md5_auth }}
       # Lowercase Docker-safe identifier shared by verify and the always-run Fabric8 stop.
       VERTICA_IT_RUN_ID: vbl-${{ github.run_id }}-${{ github.run_attempt }}
@@ -194,14 +194,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "$VERTICA_IT_PDI_IMAGE" ]]; then
-            series=${RESOLVED_BUILD%-*}
-            if [[ "$series" == 10.* ]]; then
-              tag="$series"
-            else
-              tag="${series%%.*}"
-              remainder=${series#*.}
-              tag="$tag.${remainder%%.*}"
-            fi
+            tag=${RESOLVED_BUILD%-*}
             printf 'VERTICA_IT_PDI_IMAGE=repo.pentaho.com/pnt-docker/automation/pdi-client:%s\n' "$tag" >> "$GITHUB_ENV"
           fi
 

@@ -8,10 +8,10 @@ ignored by Git; do not print, decode or upload its contents.
 
 No JDBC driver is checked in or selected by default. The suite uses a driver in
 the selected PDI distribution, or preserves the automation image driver when the
-distribution has none. For the validated 332 environment, provide JDBC 24.4
-explicitly with `-Dvertica.it.jdbc-file=/absolute/path/to/driver.jar`: the 332
-distribution has no Vertica driver in its `lib`, and the tested 11.0 automation
-image contains JDBC 9.2. An explicit path must exist. JARs in this directory are
+distribution has none. The 332 distribution has no Vertica driver in its `lib`;
+the validated `11.0.0.4` automation image supplies JDBC 24.4. To select a
+different driver, use `-Dvertica.it.jdbc-file=/absolute/path/to/driver.jar`;
+an explicit path must exist. JARs in this directory are
 ignored by Git. [prepare-runtime.sh](../pentaho-platform/docker/prepare-runtime.sh)
 removes competing runtime drivers for an override and checks JDBC and native COPY
 classes. Check the source and checksum recorded in the run evidence. Neither

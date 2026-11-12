@@ -12,7 +12,7 @@ integration-test patterns. It does not modify the existing samples or require
 Python or Docker Compose. See the [QA summary](integration-test/SP-7772-QA-summary.md)
 for results, known failures, coverage and outstanding automation.
 
-The standalone default base is `repo.pentaho.com/pnt-docker/automation/pdi-client:11.0`;
+The standalone default base is `repo.pentaho.com/pnt-docker/automation/pdi-client:11.0.0.4`;
 the database is `repo.pentaho.com/docker/vertica-ce:24.1.0-0`. The fixtures use
 `VERTICA5`, `vertica-hostname`, `vmart` and port 5433 on a private Docker network;
 the Java suite creates its own test user and tables. Do not point the suite at a
@@ -32,9 +32,9 @@ the plugin built from the checkout.
   license-service connection, not an offline entitlement: the container needs
   service connectivity and a valid entitlement. The default local file is
   ignored by Git; do not print or upload its contents.
-- An approved JDBC 24.4 JAR for the tested build and image, selected explicitly;
-  see [configuration](integration-test/conf/README.md). Neither the license
-  configuration nor JDBC is downloaded by the suite.
+- A Vertica JDBC driver in the selected distribution or image, or an explicit
+  existing driver JAR; see [configuration](integration-test/conf/README.md).
+  Neither the license configuration nor JDBC is downloaded by the suite.
 
 ## Run locally
 
@@ -53,23 +53,20 @@ resolution=$(bash integration-test/resolve-pdi-build.sh --series 11.0.0.4)
 # To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.0.0.4-332)
 build=$(printf '%s\n' "$resolution" | sed -n 's/^build=//p')
 archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
-image=repo.pentaho.com/pnt-docker/automation/pdi-client:11.0
-jdbc=/absolute/path/to/vertica-jdbc-24.4.0-0.jar
+image=repo.pentaho.com/pnt-docker/automation/pdi-client:11.0.0.4
 
 # Bundled plugin from the exact distribution.
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=bundled \
   -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
-  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-bundled \
-  -Dvertica.it.jdbc-file="$jdbc"
+  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-bundled
 
 # Candidate plugin from this checkout; root build also runs unit tests.
 mvn --batch-mode --no-transfer-progress clean install
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=local \
   -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
-  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-local \
-  -Dvertica.it.jdbc-file="$jdbc"
+  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-local
 ```
 
 Maven alone does not resolve or download the distribution:
@@ -85,12 +82,13 @@ verified build selection. Override `vertica.it.pdi-image` or
 
 By default the harness uses a distribution driver, or the image driver if the
 distribution contains none. Build 332 has no Vertica JDBC JAR in `lib`, and
-the tested 11.0 image contains JDBC 9.2, so the commands explicitly select the
-JDBC 24.4 JAR used in validation. The override takes precedence over runtime and
-image drivers and must exist; check its source and checksum in the evidence.
+the tested `11.0.0.4` image supplies JDBC 24.4. Image tags are mutable: check
+the recorded driver source and checksum. An explicitly selected
+`-Dvertica.it.jdbc-file=/absolute/path/to/driver.jar` takes precedence over
+runtime and image drivers and must exist.
 Maven and CI default to normal authentication (`vertica.it.test-md5-auth=false`).
-JDBC 6 requires opt-in MD5 for the disposable `qa_loader` user and still fails
-the pooled test. MD5 is weak: never enable it on a production or shared server.
+JDBC 6 requires opt-in MD5 for the disposable `qa_loader` user. MD5 is weak:
+never enable it on a production or shared server.
 
 Always use `verify` for Failsafe verification and normal container teardown. Use a
 unique lowercase Docker-safe `vertica.it.run-id`. Concurrent runs require separate
@@ -117,8 +115,8 @@ the checkout and workflow before granting credentials. Never use
 | `build` | Optional exact build, e.g. `11.0.0.4-332`; when set it takes precedence over `series`. |
 | `series` | Optional two-part release family or four-part maintenance series; defaults to `11.0.0.4`. |
 | `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
-| `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`11.0` for 11.0.0.4). |
-| `jdbc_file` | Optional JDBC JAR path inside the runner container; overrides the `VERTICA_IT_JDBC_FILE` repository/environment variable when provided. |
+| `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`11.0.0.4` for 11.0.0.4). |
+| `jdbc_file` | Optional JDBC JAR path inside the runner container; otherwise use the distribution or image driver. |
 | `test_md5_auth` | Enable MD5 for the disposable test user for compatible legacy-driver tests; defaults to `false`. |
 
 The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
@@ -127,11 +125,9 @@ The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 and the `/it-conf` runner mount. The job image must supply a suitable JDK for the
 checkout (Java 17 for 11.0), Maven, Docker,
 Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
-service access. `/it-conf` provides the license configuration and can provide a
-JDBC 24.4 JAR. Set `VERTICA_IT_JDBC_FILE` to its absolute runner path for automatic
-runs, or supply `jdbc_file` for manual/reusable runs. Without an override the
-tested image falls back to JDBC 9.2, not the driver validated here. The workflow preserves
-existing checkout files. Remote
+service access. `/it-conf` provides the license configuration and can provide an
+alternate JAR selected through `jdbc_file`. The workflow preserves existing
+checkout files. Remote
 execution on `k8s` has **not** been validated.
 
 ## Assertions, evidence and cleanup
@@ -154,7 +150,8 @@ top-level build labels are overwritten on the next run. Resolver provenance is i
 `target/runtime/pdi-build-provenance.txt`. CI uploads Failsafe XML/text and
 evidence JSON/log/text for seven days, not Docker contexts or license files. Logs
 should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
-recorded; no automatic whole-image or installed-plugin checksum manifest is claimed.
+recorded; no JVM class-load trace or automatic whole-image or installed-plugin
+checksum manifest is claimed.
 
 Derived images and `target/stage` and `target/docker` contexts contain the license
 configuration. Do not publish them. CI attempts run-scoped cleanup even on failure;

@@ -11,7 +11,7 @@
     <maven.compiler.release>11</maven.compiler.release>
     <maven.deploy.skip>true</maven.deploy.skip>
     <vertica.it.run-id>local</vertica.it.run-id>
-    <vertica.it.pdi-image>repo.pentaho.com/pnt-docker/automation/pdi-client:11.0</vertica.it.pdi-image>
+    <vertica.it.pdi-image>repo.pentaho.com/pnt-docker/automation/pdi-client:11.0.0.4</vertica.it.pdi-image>
     <vertica.it.vertica-image>repo.pentaho.com/docker/vertica-ce:24.1.0-0</vertica.it.vertica-image>
     <vertica.it.source>bundled</vertica.it.source>
     <vertica.it.plugin-zip/>
