@@ -1,4 +1,4 @@
-name: SP-7772 Vertica integration tests
+name: Vertica Bulkloader integration tests
 
 on:
   pull_request:
@@ -271,7 +271,7 @@ jobs:
             integration-test/pentaho-platform/target/evidence/**/*.log
             integration-test/pentaho-platform/target/evidence/**/*.txt
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 30
 
       - name: Remove run-local derived image
         if: always()
