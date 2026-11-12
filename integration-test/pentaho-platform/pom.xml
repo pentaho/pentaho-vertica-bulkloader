@@ -9,7 +9,6 @@
     <vertica.it.evidence-dir>${project.build.directory}/evidence</vertica.it.evidence-dir>
     <vertica.it.pdi-dir>/home/devuser/pentaho/design-tools/data-integration</vertica.it.pdi-dir>
     <vertica.it.license-file>${project.basedir}/../conf/.elmLicInfo.plt</vertica.it.license-file>
-    <vertica.it.jdbc-file>${project.basedir}/../conf/vertica-jdbc.jar</vertica.it.jdbc-file>
   </properties>
   <dependencies>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version><scope>test</scope></dependency>
@@ -21,17 +20,19 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.1.0</version>
         <executions><execution><id>stage-test-configuration</id><phase>process-test-resources</phase><goals><goal>run</goal></goals>
-          <configuration><target>
+          <configuration><target xmlns:if="ant:if">
             <delete dir="${vertica.it.stage}" defaultexcludes="false"/><mkdir dir="${vertica.it.stage}/conf"/><mkdir dir="${vertica.it.stage}/lib"/>
             <mkdir dir="${vertica.it.stage}/plugins"/><mkdir dir="${vertica.it.stage}/distribution"/>
             <mkdir dir="${vertica.it.evidence-dir}"/>
             <available file="${vertica.it.license-file}" property="license.available"/>
             <fail unless="license.available" message="Provide integration-test/conf/.elmLicInfo.plt (or -Dvertica.it.license-file). No license is downloaded."/>
             <copy file="${vertica.it.license-file}" tofile="${vertica.it.stage}/conf/.elmLicInfo.plt"/>
-            <!-- Optional override. Otherwise use the runtime/base image's bundled driver. -->
+            <condition property="jdbc.override.configured"><not><equals arg1="${vertica.it.jdbc-file}" arg2=""/></not></condition>
+            <available file="${vertica.it.jdbc-file}" type="file" property="jdbc.override.exists"/>
+            <fail if="jdbc.override.configured" unless="jdbc.override.exists" message="The specified JDBC override does not exist."/>
             <dirname property="jdbc.directory" file="${vertica.it.jdbc-file}"/>
             <basename property="jdbc.filename" file="${vertica.it.jdbc-file}"/>
-            <copy todir="${vertica.it.stage}/lib"><fileset dir="${jdbc.directory}" erroronmissingdir="false"><include name="${jdbc.filename}"/></fileset><globmapper from="*" to="vertica-jdbc.jar"/></copy>
+            <copy todir="${vertica.it.stage}/lib" if:set="jdbc.override.configured"><fileset dir="${jdbc.directory}"><include name="${jdbc.filename}"/></fileset><globmapper from="*" to="vertica-jdbc.jar"/></copy>
             <condition property="valid.source"><or><equals arg1="${vertica.it.source}" arg2="local"/><equals arg1="${vertica.it.source}" arg2="bundled"/></or></condition>
             <fail unless="valid.source" message="vertica.it.source must be local or bundled"/>
             <echo file="${vertica.it.stage}/conf/source">${vertica.it.source}</echo>

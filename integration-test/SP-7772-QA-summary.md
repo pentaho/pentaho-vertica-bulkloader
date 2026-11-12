@@ -6,11 +6,64 @@
 backport of PDI-20802, which addresses Vertica Bulk Loader hangs after certain
 Vertica SQL exceptions. The test target is PDI 11.0.0.4 with the plugin built
 from the 11.0 branch, as well as the plugin bundled with the tested PDI build.
-The branch tip is `3718dcbd` ([PR #106](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/106)).
-The SP-7772 Jira comment identifies `11.0.0.4-330` as a build containing the
-backport.
+The initial backport was merged in [PR #106](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/106),
+commit `3718dcbd`; the JDBC 24 follow-up was merged in
+[PR #108](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/108),
+commit `2ac850697eb271f74fa4e8bbd2d0e584eeb9fd36`. The SP-7772 Jira comment
+identifies `11.0.0.4-332` as containing the follow-up.
 
 ## Results
+
+### Latest: build 332 and JDBC 24
+
+On November 12, 2026, the published `11.0.0.4-332` distribution and the 11.0
+candidate based on `2ac85069` were tested separately against disposable Vertica
+CE `24.1.0-0`, with JDBC `24.4.0-0` and default SHA-512 authentication. The
+candidate was built with Java 17; the PDI container used Java 21.0.10 on Ubuntu
+22.04.5 LTS, Linux x86-64, on an ARM64 macOS host.
+
+| Plugin under test | Result | Duration / finish (UTC) |
+| --- | --- | --- |
+| Plugin bundled with `11.0.0.4-332` | 12 passed, 0 failed, 0 skipped | 4:30 / 13:48:49 |
+| 11.0 branch candidate | 12 passed, 0 failed, 0 skipped | 4:35 / 13:53:38 |
+
+Both variants passed the seven original and five lifecycle scenarios, including
+natural SQL failure and recovery, active-COPY Abort and pooled same-JVM recovery.
+The candidate unit suite subsequently passed 72 tests, including two tests for
+pooled-lease release ordering; these are mock-based unit tests, not integration
+proof of the forced-stop race. The bundled and candidate binaries are separate
+variants and are not assumed to be identical.
+
+The initial bundled run reported 11/12 because its pooled test expected a log
+message not emitted by this PDI release. The log showed pool creation, the
+expected permission error and a successful retry; subsequent row and cleanup
+assertions were not reached. After changing the assertion to the release's
+successful pool-creation message, a focused pooled test and the full bundled
+suite passed, including independent row and clean-log assertions. The initial
+failure and focused rerun are retained separately.
+
+| Provenance | Value |
+| --- | --- |
+| PDI archive | `11.0.0.4-332`; catalog SHA-1 `e3d2f791aa442c4040fd024e098668b2ddc8ea22`; SHA-256 `906814a1bfef1b8c7364bf46ae0d1afa5e3869a8fbb3e476bb91470203cf1549` |
+| PDI automation image | `repo.pentaho.com/pnt-docker/automation/pdi-client:11.0`; digest `sha256:42b6923ed529001b05f4610e542b8bf714660aa07b30c86b11db2c238425b517` |
+| JDBC override | `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637` |
+| JDBC source image | `repo.pentaho.com/pnt-docker/automation/pdi-client:11.1`; digest `sha256:f138c0cbc75245022430f9123c1f16f1f740b0b7ebc8026f43a9f8f3a4b3dfc6` |
+| Candidate assembly used in integration run | SHA-256 `42e98d040d448be24bf61a6e23a546edfd4665b97687cc9059eb5af153b4aa8c` |
+
+The resolver verified the archive against the published catalog checksum. The
+332 distribution contains no Vertica JDBC JAR in `lib`; the freshly pulled 11.0
+image contains JDBC 9.2, so the verified JDBC 24 JAR was extracted from the source
+image and supplied explicitly. Both test classes in both final runs recorded the
+override and matching checksum, and neither runtime contained another
+Vertica-named JDBC JAR. No JVM class-load trace was captured; the provenance
+records the staged driver, not independent proof of class origin.
+
+Local evidence is retained under the platform module's `target/evidence` in
+`sp7772-332-bundled-final` and `sp7772-332-candidate`, with the initial run and
+focused probe in `sp7772-332-bundled` and `sp7772-332-poolprobe`. These are local
+generated artifacts, not committed certification; review logs before sharing.
+
+### Historical: build 330 and JDBC 6
 
 On November 10, 2026, both suites were run locally against PDI
 `11.0.0.4-330`, Vertica CE `24.1.0-0`, and the supplied JDBC `06.00.0000`

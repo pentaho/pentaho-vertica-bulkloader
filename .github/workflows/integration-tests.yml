@@ -17,7 +17,7 @@ on:
         type: string
         default: ''
       build:
-        description: Exact PDI build (for example 11.0.0.4-330); empty selects latest in series
+        description: Exact PDI build (for example 11.0.0.4-332); empty selects latest in series
         type: string
         required: false
         default: ''
@@ -32,9 +32,9 @@ on:
         required: false
         default: ''
       test_md5_auth:
-        description: Use MD5 for the disposable test user (required by the default JDBC 6 driver)
+        description: Use MD5 for the disposable test user (only for compatible legacy-driver tests)
         type: boolean
-        default: true
+        default: false
   workflow_call:
     inputs:
       source:
@@ -46,7 +46,7 @@ on:
         type: string
         default: ''
       build:
-        description: Exact PDI build (for example 11.0.0.4-330); empty selects latest in series
+        description: Exact PDI build (for example 11.0.0.4-332); empty selects latest in series
         type: string
         default: ''
       series:
@@ -60,7 +60,7 @@ on:
       test_md5_auth:
         description: Use MD5 for the disposable test user
         type: boolean
-        default: true
+        default: false
     secrets:
       PENTAHO_CICD_ONE_USER:
         required: true
@@ -104,7 +104,7 @@ jobs:
       VERTICA_IT_PDI_IMAGE: ${{ inputs.pdi_image }}
       VERTICA_IT_BUILD: ${{ inputs.build }}
       VERTICA_IT_SERIES: ${{ inputs.series }}
-      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file }}
+      VERTICA_IT_JDBC_FILE: ${{ inputs.jdbc_file || vars.VERTICA_IT_JDBC_FILE }}
       VERTICA_IT_TEST_MD5_AUTH: ${{ inputs.test_md5_auth }}
       # Lowercase Docker-safe identifier shared by verify and the always-run Fabric8 stop.
       VERTICA_IT_RUN_ID: vbl-${{ github.run_id }}-${{ github.run_attempt }}
@@ -141,16 +141,12 @@ jobs:
           fi
           umask 077
           mkdir -p integration-test/conf
-          for file in .elmLicInfo.plt vertica-jdbc.jar; do
+          for file in .elmLicInfo.plt; do
             destination="integration-test/conf/$file"
             # Preserve files already supplied in the checkout. Only absent files are staged.
             if [[ ! -e "$destination" && -f "/it-conf/$file" && -r "/it-conf/$file" && -s "/it-conf/$file" ]]; then
               install -m 600 "/it-conf/$file" "$destination"
-              if [[ "$file" == .elmLicInfo.plt ]]; then
-                echo 'staged_license=true' >> "$GITHUB_OUTPUT"
-              else
-                echo 'staged_driver=true' >> "$GITHUB_OUTPUT"
-              fi
+              echo 'staged_license=true' >> "$GITHUB_OUTPUT"
             fi
             if [[ "$file" == .elmLicInfo.plt && ( ! -f "$destination" || ! -r "$destination" || ! -s "$destination" ) ]]; then
               echo "::error::Missing readable license configuration: $destination. Supply an approved file through /it-conf."
@@ -222,7 +218,7 @@ jobs:
             "-Dvertica.it.run-id=$VERTICA_IT_RUN_ID"
             "-Dvertica.it.pdi-build=$VERTICA_IT_RESOLVED_BUILD"
             "-Dvertica.it.pdi-archive=$VERTICA_IT_PDI_ARCHIVE"
-            "-Dvertica.it.test-md5-auth=${VERTICA_IT_TEST_MD5_AUTH:-true}"
+            "-Dvertica.it.test-md5-auth=${VERTICA_IT_TEST_MD5_AUTH:-false}"
           )
           if [[ -n "$VERTICA_IT_JDBC_FILE" ]]; then args+=("-Dvertica.it.jdbc-file=$VERTICA_IT_JDBC_FILE"); fi
           mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
@@ -297,11 +293,9 @@ jobs:
         if: always()
         env:
           STAGED_LICENSE: ${{ steps.prerequisites.outputs.staged_license }}
-          STAGED_DRIVER: ${{ steps.prerequisites.outputs.staged_driver }}
         run: |
           set -euo pipefail
           if [[ "$STAGED_LICENSE" == true ]]; then rm -f -- integration-test/conf/.elmLicInfo.plt; fi
-          if [[ "$STAGED_DRIVER" == true ]]; then rm -f -- integration-test/conf/vertica-jdbc.jar; fi
           # Do not touch the read-only persistent conf mount or shared Maven cache.
           rm -rf -- integration-test/pentaho-platform/target/stage \
             integration-test/pentaho-platform/target/docker \

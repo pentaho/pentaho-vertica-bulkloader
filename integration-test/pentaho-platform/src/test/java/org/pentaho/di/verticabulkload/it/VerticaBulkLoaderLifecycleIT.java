@@ -84,7 +84,7 @@ class VerticaBulkLoaderLifecycleIT {
   void pooledConnectionRecoversInSameKitchenJvm() throws Exception {
     harness.sql( "REVOKE INSERT ON public.qa_target FROM qa_loader" );
     String output = harness.runPdiPooledRecovery( 100_000, PAYLOAD );
-    assertThat( output ).contains( "Pooled connection acquired for database [Vertica QA loader]" );
+    assertThat( output ).contains( "Successfully created database connection pool for 'Vertica QA loader'" );
     assertThat( output ).contains( "SQL Error during statement execution." );
     assertThat( output.toLowerCase( Locale.ROOT ) ).containsPattern( "permission denied|insufficient privilege" );
     assertThat( output ).contains( "PDI-20802 pooled recovery" );

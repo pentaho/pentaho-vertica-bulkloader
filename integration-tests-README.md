@@ -32,10 +32,9 @@ the plugin built from the checkout.
   license-service connection, not an offline entitlement: the container needs
   service connectivity and a valid entitlement. The default local file is
   ignored by Git; do not print or upload its contents.
-- The checked-in [JDBC 6 driver](integration-test/conf/vertica-jdbc.jar) is the
-  default. Another JDBC JAR can be selected explicitly; see
-  [configuration](integration-test/conf/README.md). Neither license configuration
-  nor JDBC is downloaded by the suite.
+- An approved JDBC 24.4 JAR for the tested build and image, selected explicitly;
+  see [configuration](integration-test/conf/README.md). Neither the license
+  configuration nor JDBC is downloaded by the suite.
 
 ## Run locally
 
@@ -51,17 +50,18 @@ Archives are cached in the platform module's `target/runtime`.
 ```bash
 # Select the latest 11.0.0.4 build, or pin the build under validation.
 resolution=$(bash integration-test/resolve-pdi-build.sh --series 11.0.0.4)
-# To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.0.0.4-330)
+# To pin a build instead: resolution=$(bash integration-test/resolve-pdi-build.sh --build 11.0.0.4-332)
 build=$(printf '%s\n' "$resolution" | sed -n 's/^build=//p')
 archive=$(printf '%s\n' "$resolution" | sed -n 's/^archive=//p')
 image=repo.pentaho.com/pnt-docker/automation/pdi-client:11.0
+jdbc=/absolute/path/to/vertica-jdbc-24.4.0-0.jar
 
 # Bundled plugin from the exact distribution.
 mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=bundled \
   -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
   -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-bundled \
-  -Dvertica.it.test-md5-auth=true
+  -Dvertica.it.jdbc-file="$jdbc"
 
 # Candidate plugin from this checkout; root build also runs unit tests.
 mvn --batch-mode --no-transfer-progress clean install
@@ -69,7 +69,7 @@ mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
   -DrunIntegrationTests -Dvertica.it.source=local \
   -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
   -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-local \
-  -Dvertica.it.test-md5-auth=true
+  -Dvertica.it.jdbc-file="$jdbc"
 ```
 
 Maven alone does not resolve or download the distribution:
@@ -83,17 +83,14 @@ another local candidate explicitly.
 verified build selection. Override `vertica.it.pdi-image` or
 `vertica.it.vertica-image` when necessary, preferably with immutable digests.
 
-The checked-in JDBC 6 driver is selected by default. To test another driver
-without overwriting it, add `-Dvertica.it.jdbc-file=/absolute/path/to/other-driver.jar`.
-The selected JAR takes precedence over drivers in the runtime and base image.
-If the selected file is absent, the harness falls back to the runtime or image
-driver, so check the recorded driver checksum. The examples enable MD5 password
-authentication only for the disposable `qa_loader` test user; Maven's property
-default is `false`. MD5 is weak and this setting is only for the isolated test
-database, never a production or shared server. With JDBC 6 and the tested
-Vertica 24.1 default SHA-512 authentication, the driver cannot log in. Omit
-the MD5 option when testing a driver compatible with SHA-512. JDBC 6 lacks
-`Connection.isValid(int)`; see the QA summary for pool initialization results.
+By default the harness uses a distribution driver, or the image driver if the
+distribution contains none. Build 332 has no Vertica JDBC JAR in `lib`, and
+the tested 11.0 image contains JDBC 9.2, so the commands explicitly select the
+JDBC 24.4 JAR used in validation. The override takes precedence over runtime and
+image drivers and must exist; check its source and checksum in the evidence.
+Maven and CI default to normal authentication (`vertica.it.test-md5-auth=false`).
+JDBC 6 requires opt-in MD5 for the disposable `qa_loader` user and still fails
+the pooled test. MD5 is weak: never enable it on a production or shared server.
 
 Always use `verify` for Failsafe verification and normal container teardown. Use a
 unique lowercase Docker-safe `vertica.it.run-id`. Concurrent runs require separate
@@ -117,12 +114,12 @@ the checkout and workflow before granting credentials. Never use
 
 | Input | Default and behavior |
 | --- | --- |
-| `build` | Optional exact build, e.g. `11.0.0.4-330`; when set it takes precedence over `series`. |
+| `build` | Optional exact build, e.g. `11.0.0.4-332`; when set it takes precedence over `series`. |
 | `series` | Optional two-part release family or four-part maintenance series; defaults to `11.0.0.4`. |
 | `source` | `local` builds and tests the checkout; `bundled` tests the selected distribution's plugin. |
 | `pdi_image` | Optional override or immutable digest; otherwise inferred from the selected build (`11.0` for 11.0.0.4). |
-| `jdbc_file` | Optional path to another JDBC JAR inside the runner container, such as `/it-conf/other-driver.jar`; the checked-in JDBC 6 JAR is the default. |
-| `test_md5_auth` | Enable MD5 for the disposable test user; defaults to `true` for JDBC 6 and can be disabled for another driver. |
+| `jdbc_file` | Optional JDBC JAR path inside the runner container; overrides the `VERTICA_IT_JDBC_FILE` repository/environment variable when provided. |
+| `test_md5_auth` | Enable MD5 for the disposable test user for compatible legacy-driver tests; defaults to `false`. |
 
 The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 `ARTIFACTORY_BASE_URL` variables, `PENTAHO_CICD_ONE_USER` and
@@ -130,8 +127,10 @@ The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 and the `/it-conf` runner mount. The job image must supply a suitable JDK for the
 checkout (Java 17 for 11.0), Maven, Docker,
 Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
-service access. `/it-conf` provides the license configuration and can provide an
-alternate JDBC JAR selected through `jdbc_file`. The workflow preserves
+service access. `/it-conf` provides the license configuration and can provide a
+JDBC 24.4 JAR. Set `VERTICA_IT_JDBC_FILE` to its absolute runner path for automatic
+runs, or supply `jdbc_file` for manual/reusable runs. Without an override the
+tested image falls back to JDBC 9.2, not the driver validated here. The workflow preserves
 existing checkout files. Remote
 execution on `k8s` has **not** been validated.
 

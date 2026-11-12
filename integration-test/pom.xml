@@ -16,7 +16,7 @@
     <vertica.it.source>bundled</vertica.it.source>
     <vertica.it.plugin-zip/>
     <vertica.it.license-file>${maven.multiModuleProjectDirectory}/conf/.elmLicInfo.plt</vertica.it.license-file>
-    <vertica.it.jdbc-file>${maven.multiModuleProjectDirectory}/conf/vertica-jdbc.jar</vertica.it.jdbc-file>
+    <vertica.it.jdbc-file/>
     <vertica.it.test-md5-auth>false</vertica.it.test-md5-auth>
     <!-- Optional exact-build distribution ZIP supplied locally, never downloaded by the suite. -->
     <vertica.it.pdi-archive/>
