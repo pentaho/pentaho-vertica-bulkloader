@@ -1138,10 +1138,10 @@ public class VerticaBulkLoaderTest {
   private void assertPooledLeaseHeldUntilThreadsExit( boolean workerExitsFirst, boolean wrapperReportsClosed )
     throws Exception {
     Database database = mock( Database.class );
-    DelegatingConnection wrapper = mock( DelegatingConnection.class );
+    Connection wrapper = mock( Connection.class );
     VerticaConnection physical = mock( VerticaConnection.class );
     when( database.getConnection() ).thenReturn( wrapper );
-    when( wrapper.getInnermostDelegate() ).thenReturn( physical );
+    when( wrapper.unwrap( VerticaConnection.class ) ).thenReturn( physical );
     when( wrapper.isClosed() ).thenReturn( wrapperReportsClosed );
     loaderData.db = database;
     loader.setErrors( 0 );
@@ -1168,15 +1168,12 @@ public class VerticaBulkLoaderTest {
     } ).when( loader ).createDatabaseCleanupThread( any( Runnable.class ) );
     doAnswer( invocation -> {
       cancellationStarted.countDown();
+      physicalClosed.countDown();
       try {
         awaitIgnoringInterrupts( releaseCancellation );
       } finally {
         cancellationFinished.countDown();
       }
-      return null;
-    } ).when( loader ).cancelRunningCopy( database );
-    doAnswer( invocation -> {
-      physicalClosed.countDown();
       return null;
     } ).when( physical ).close();
     doAnswer( invocation -> {

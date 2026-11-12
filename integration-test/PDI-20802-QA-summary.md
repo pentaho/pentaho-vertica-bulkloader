@@ -9,15 +9,53 @@ and termination without manual intervention. The fix was merged to master in
 [PR #104](https://github.com/pentaho/pentaho-vertica-bulkloader/pull/104), commit
 `528bd20ebd85c20502596900be5bad5d07ea992b`.
 
-**Result: driver-dependent cleanup and pooled-load failures found on PDI 11.1.0.0-461.** The previously executed
-candidate and bundled suites passed their original assertions, but their logs
-show unexpected cleanup failures that those assertions did not check. New real
-integration tests also reproduce a pooled COPY worker crash and hang. Spoon Stop,
-slow COPY finalization, the exact pooled timeout race, the original cluster-fault
-reproductions and remote `k8s` CI remain **not validated**. Do not treat these
-automated results alone as proof of all ticket criteria.
+**Latest result: both plugin variants passed all 12 integration tests on PDI
+11.1.0.0-468 with JDBC 24.4 and default authentication.** The earlier 461 runs
+found driver-dependent cleanup and pooled-load failures, documented below as
+historical results. Spoon Stop, slow COPY finalization, the exact pooled timeout
+race, the original cluster-fault reproductions and remote `k8s` CI remain
+**not validated**. These automated results alone do not prove all ticket criteria.
 
 ## Executed validation
+
+### Latest: PDI 11.1.0.0-468
+
+On November 12, 2026, the master-based test branch was rebased onto master
+`b688e6672261469e9b285c79199d354edc98a285`. Its candidate assembly was built
+with Java 17 and passed 74 unit tests, including the branch's pooled-lease
+ordering tests adapted to the current JDBC unwrap and close path. The exact 468
+distribution was tested twice with Java 21 in the `11.1` automation image and
+disposable Vertica CE 24.1.0-0. The test-user MD5 option was disabled.
+
+| Plugin under test | Result | Maven duration / finish (UTC) |
+| --- | --- | --- |
+| Distribution-bundled plugin | 12 passed, 0 failed, 0 skipped | 4:39 / 12:26:06 |
+| Rebased master candidate | 12 passed, 0 failed, 0 skipped | 4:43 / 12:31:20 |
+
+Both runs passed all seven original scenarios and all five lifecycle scenarios,
+including strict cleanup checks and same-JVM pooled failure/recovery. The
+bundled and candidate binaries are separate variants; the results do not assert
+that they are identical. The recovery test does not prove reuse of a particular
+physical connection or the forced-stop pool-lease race.
+
+| Provenance | Value |
+| --- | --- |
+| PDI archive | `11.1.0.0-468`; catalog SHA-1 `518c733d232de9b605f0178f2cbd09a5a167f060`; SHA-256 `dfe51d3787aed8b90f29816d79e7d9bdc85d93708e7bf246aefe733f25a98ef9` |
+| PDI base image | `repo.pentaho.com/pnt-docker/automation/pdi-client:11.1`, image ID and repository digest `sha256:f138c0cbc75245022430f9123c1f16f1f740b0b7ebc8026f43a9f8f3a4b3dfc6` |
+| Candidate assembly | `vertica-bulkloader-plugin-11.1.0.0-SNAPSHOT.zip`; SHA-256 `c49d705e43d196f6a30fa333c3f454a9a1e5ce9c9177c702f9332a52c3bc50d1` |
+| Staged Vertica JDBC | Image-supplied `vertica-jdbc-24.4.0-0.jar`; SHA-256 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`; manifest version `24.04.0000` |
+
+The 468 archive contained no Vertica JDBC JAR in its `lib` directory, so the
+harness preserved the image driver during runtime replacement. Both test classes
+in both runs recorded the same source, path and checksum. Neither runtime had
+another Vertica-named JDBC JAR; no JVM class-load trace was captured, so this
+provenance records the staged driver rather than independently proving its class
+origin. The resolver verified the archive against the published catalog checksum.
+Local reports and logs are retained under the platform module's `target/evidence`
+in `pdi20802-468-bundled` and `pdi20802-468-candidate`. They are generated
+artifacts, not committed certification; review logs before sharing.
+
+### Historical: PDI 11.1.0.0-461
 
 The initial runs used the master-based `PDI_20802_tests` worktree,
 Java 17 for Maven, the exact 11.1.0.0-461 distribution, the `11.1` automation
@@ -119,12 +157,12 @@ not establish whether the pooled-wrapper race is fixed.
 | Vertica JDBC | Image-supplied 9.2.1-0, preserved across runtime replacement; SHA-256 `2791104a77cd22fbd6605157e18e27bd71eef24cbffb3a04e2dacdaad7e0d89d` |
 | Vertica database | `repo.pentaho.com/docker/vertica-ce:24.1.0-0` |
 
-The repository ELM file configures a license-service connection, not an offline
+The local ELM file configures a license-service connection, not an offline
 entitlement; service access and a valid entitlement are required. No license or
 JDBC driver is downloaded. The resolver verified the 461 archive against the
 catalog. On November 5, latest family resolution selected `11.1.0.0-461` for
 `11.1`, `11.0.0.4-328` for `11.0`, and `10.2.0.11-452` for `10.2`; only 461 was
-integration-tested in this worktree. Latest can change; these are not fixed defaults.
+integration-tested at that point. Latest can change; these are not fixed defaults.
 
 Local generated evidence is retained under the platform module's `target/evidence`
 in separate `pdi20802-461-local` and `pdi20802-461-bundled` directories. Each
@@ -157,9 +195,9 @@ uses actual Pan/Kitchen, native Vertica COPY and independent database assertions
 | `copyStartPermissionDenied` | COPY permission error fails naturally and commits no rows. |
 | `serverCheckRejectionAborts` | Server CHECK rejection fails naturally and commits no rows. |
 | `kitchenFailureBranch` | Error hop writes exactly one audit marker; ABORT leaves the job failed. |
-| `repeatedFailureThenRecovery` | Two failures are followed by zero sessions and a successful 23-row load; cleanup errors were missed. |
+| `repeatedFailureThenRecovery` | Two failures are followed by zero sessions and a successful 23-row load. |
 
-In the stricter rerun, the first three healthy scenarios passed and the four SQL
+In the historical 461 stricter rerun with JDBC 9.2, the first three healthy scenarios passed and the four SQL
 failure scenarios failed on the cleanup error. The repeated-failure test stopped
 at its first failure and did not reach recovery in that rerun.
 In each failure, the assertion that output must not contain
@@ -184,7 +222,7 @@ negative tests missed the driver-class cleanup error noted above.
 The separate [lifecycle suite](pentaho-platform/src/test/java/org/pentaho/di/verticabulkload/it/VerticaBulkLoaderLifecycleIT.java)
 uses real PDI and Vertica without mocked driver or pool behavior:
 
-| Scenario | Final result on master candidate and 461 |
+| Scenario | Historical result on master candidate and 461 with JDBC 9.2 |
 | --- | --- |
 | `multipleCopiesCompleteAtEof` | **Pass:** three copies process rows; all 100,000 values commit. |
 | `slowInputCompletesAtEof` | **Pass:** 100 rows stream through a FIFO for over five seconds and commit at EOF. This is not a delayed COPY-finalization test. |
@@ -322,8 +360,8 @@ occurs while either remains alive. Once both exit, verify disconnect and wrapper
 release complete, rollback occurs when the connection is still open, and the
 pool and server sessions return to baseline. A timeout or process kill is not a
 pass. The present Pan/Kitchen harness has no such stall or pool-lease observation
-mechanism; the new same-JVM recovery test does not establish this race and is
-currently blocked before COPY by the missing DBCP class.
+mechanism; the same-JVM recovery test passed on 468 but does not establish this
+race. The historical 461 run was blocked before COPY by the missing DBCP class.
 
 ## Remaining automation
 
