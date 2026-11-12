@@ -44,7 +44,7 @@ else
   if [[ "$found" == false ]]; then
     bundled=("$fallback"/*.jar)
     if (( ${#bundled[@]} == 0 )); then
-      echo 'No Vertica JDBC driver in selected runtime or base image. Provide integration-test/conf/vertica-jdbc.jar or -Dvertica.it.jdbc-file=/absolute/path.' >&2
+      echo 'No Vertica JDBC driver in selected runtime or base image. Specify -Dvertica.it.jdbc-file=/absolute/path/to/vertica-jdbc.jar.' >&2
       exit 1
     fi
     cp "${bundled[@]}" "$pdi_dir/lib/"

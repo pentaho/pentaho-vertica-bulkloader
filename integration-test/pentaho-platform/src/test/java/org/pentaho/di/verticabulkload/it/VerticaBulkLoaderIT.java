@@ -272,6 +272,7 @@ class VerticaBulkLoaderIT {
 
   static void assertNoCleanupError( String output ) {
     assertThat( output ).doesNotContain( "Unexpected error during Vertica bulk-load database cleanup.",
+      "remaining daemon threads are quarantined.",
       "java.lang.NoClassDefFoundError", "Exception in thread \"" );
   }
 

@@ -115,6 +115,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup Maven settings
+        id: maven-settings
+        uses: ./.github/actions/setup-maven-settings
+        with:
+          m2-directory: ${{ runner.temp }}/vertica-maven-${{ github.run_id }}-${{ github.run_attempt }}
+          artifactory-base-url: ${{ env.ARTIFACTORY_BASE_URL }}
+          artifactory-host: ${{ env.ARTIFACTORY_HOST }}
+          artifactory-user: ${{ secrets.PENTAHO_CICD_ONE_USER }}
+          artifactory-api-key: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
+
       - name: Check prerequisites and stage operator-provided conf
         id: prerequisites
         run: |
@@ -155,16 +165,6 @@ jobs:
           done
           printf 'DOCKER_CONFIG=%s/vertica-docker-%s\n' "$RUNNER_TEMP" "$VERTICA_IT_RUN_ID" >> "$GITHUB_ENV"
 
-      - name: Setup Maven settings
-        id: maven-settings
-        uses: ./.github/actions/setup-maven-settings
-        with:
-          m2-directory: ${{ runner.temp }}/vertica-maven-${{ github.run_id }}-${{ github.run_attempt }}
-          artifactory-base-url: ${{ env.ARTIFACTORY_BASE_URL }}
-          artifactory-host: ${{ env.ARTIFACTORY_HOST }}
-          artifactory-user: ${{ secrets.PENTAHO_CICD_ONE_USER }}
-          artifactory-api-key: ${{ secrets.PENTAHO_CICD_ONE_KEY }}
-
       - name: Login to Artifactory Docker registry
         uses: docker/login-action@v3
         with:
@@ -177,7 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
-            -Dmaven.repo.local=/m2_local_cache/ clean install
+            -Dmaven.repo.local=/m2_local_cache/ -Dmaven.test.failure.ignore=false clean install
 
       - name: Resolve and verify PDI build
         id: pdi-build
@@ -222,7 +222,7 @@ jobs:
           )
           if [[ -n "$VERTICA_IT_JDBC_FILE" ]]; then args+=("-Dvertica.it.jdbc-file=$VERTICA_IT_JDBC_FILE"); fi
           mvn --batch-mode --no-transfer-progress --settings "$MAVEN_SETTINGS_FILE" \
-            -Dmaven.repo.local=/m2_local_cache/ \
+            -Dmaven.repo.local=/m2_local_cache/ -Dmaven.test.failure.ignore=false \
             -f integration-test/pom.xml verify -DrunIntegrationTests "${args[@]}"
 
       - name: Stop only this run's Fabric8 resources
@@ -276,6 +276,8 @@ jobs:
             integration-test/pentaho-platform/target/failsafe-reports/*.txt
             integration-test/pentaho-platform/target/evidence/**/*.json
             integration-test/pentaho-platform/target/evidence/**/*.log
+            integration-test/pentaho-platform/target/evidence/**/*.log.status
+            integration-test/pentaho-platform/target/evidence/**/*.log.command
             integration-test/pentaho-platform/target/evidence/**/*.txt
           if-no-files-found: warn
           retention-days: 30
