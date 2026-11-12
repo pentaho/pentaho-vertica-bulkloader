@@ -27,11 +27,11 @@ the plugin built from the checkout.
   Silicon requires amd64 emulation. Allow sufficient memory and disk.
 - Access to internal Maven and Docker registries, the build catalog and the PDI
   archive repository; configure Maven and Docker credentials separately.
-- An approved local ELM configuration is a license-service connection, not an
-  offline entitlement: the container needs service connectivity and a valid
-  entitlement. Do not print, commit or upload its contents. Place it in
-  `integration-test/conf/.elmLicInfo.plt` or select an approved file with
-  `-Dvertica.it.license-file=/absolute/path`.
+- The selected PDI image may provide an ELM configuration. To override it, place
+  an approved file in `integration-test/conf/.elmLicInfo.plt` or select one with
+  `-Dvertica.it.license-file=/absolute/path`. This configures a license-service
+  connection, not an offline entitlement: the container needs service connectivity
+  and a valid entitlement. Do not print, commit or upload its contents.
 - The selected distribution or automation image supplies JDBC by default. An
   alternative JAR can be selected explicitly; see
   [configuration](integration-test/conf/README.md). Neither license configuration
@@ -130,8 +130,9 @@ The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 and the `/it-conf` runner mount. The job image must supply a suitable JDK for the
 checkout (Java 17 for master), Maven, Docker,
 Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
-service access. `/it-conf` provides the approved license configuration and can provide
-an alternate JDBC JAR selected through `jdbc_file`. The workflow preserves
+service access. `/it-conf` can provide an approved license configuration and an
+alternate JDBC JAR selected through `jdbc_file`. Without an external configuration,
+the run relies on the selected PDI image. The workflow preserves
 existing checkout files. Remote
 execution on `k8s` has **not** been validated.
 

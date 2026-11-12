@@ -1,7 +1,8 @@
 # Integration-test configuration
 
-Supply an approved local `.elmLicInfo.plt` in this directory, or select one with
-`-Dvertica.it.license-file=/absolute/path`. It configures an ELM license-service
+The selected PDI image may provide an ELM configuration. To override it, supply
+an approved local `.elmLicInfo.plt` in this directory, or select one with
+`-Dvertica.it.license-file=/absolute/path`. The configuration is a license-service
 connection, not an offline entitlement; PDI needs access to that service and a
 valid entitlement. Do not print, decode, commit or upload its contents. The
 default file is ignored by Git; removing it from the current tree does not remove
@@ -23,8 +24,9 @@ set the disposable `qa_loader` user's password algorithm to MD5. The default is
 database. The CI workflow also defaults to `false`; JDBC 24.4 was validated
 with the default authentication.
 
-The configuration is copied into the derived PDI image and its build context;
-never publish those. Clean run-scoped derived images and generated staging/build
+An override is copied into the derived PDI image and its build context; the base
+image may also contain license configuration. Never publish derived images or
+build contexts. Clean run-scoped derived images and generated staging/build
 contexts after use. CI can select an alternate JAR on its read-only `/it-conf`
 mount explicitly. See the [execution guide](../../integration-tests-README.md)
 and [QA results](../PDI-20802-QA-summary.md).
