@@ -18,9 +18,14 @@ class DockerUtilsTest {
   }
 
   @Test
-  void rejectsQuarantinedCleanupThreads() {
+  void allowsQuarantineWarningButRejectsOtherCleanupErrors() {
+    VerticaBulkLoaderIT.assertNoCleanupError(
+      "Vertica bulk-load cleanup did not stop within 5000 ms; remaining daemon threads are quarantined." );
     assertThatThrownBy( () -> VerticaBulkLoaderIT.assertNoCleanupError(
-      "Vertica bulk-load cleanup did not stop within 5000 ms; remaining daemon threads are quarantined." ) )
+      "Unexpected error during Vertica bulk-load database cleanup." ) ).isInstanceOf( AssertionError.class );
+    assertThatThrownBy( () -> VerticaBulkLoaderIT.assertNoCleanupError( "java.lang.NoClassDefFoundError" ) )
+      .isInstanceOf( AssertionError.class );
+    assertThatThrownBy( () -> VerticaBulkLoaderIT.assertNoCleanupError( "Exception in thread \"worker\"" ) )
       .isInstanceOf( AssertionError.class );
     VerticaBulkLoaderIT.assertNoCleanupError( "normal shutdown" );
   }
