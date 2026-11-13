@@ -1,0 +1,4 @@
+FROM ${vertica.it.vertica-image}
+USER root
+RUN chmod go-w /etc/sudo.conf /usr/libexec/sudo/sudoers.so
+USER dbadmin

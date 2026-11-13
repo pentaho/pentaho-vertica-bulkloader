@@ -53,7 +53,8 @@ Run: ${vertica.it.run-id}</echo>
         <configuration>
           <autoCreateCustomNetworks>true</autoCreateCustomNetworks><startParallel>false</startParallel>
           <images>
-            <image><name>${vertica.it.vertica-image}</name><alias>vertica</alias>
+            <image><name>vertica-bulkloader-it-db:${vertica.it.run-id}</name><alias>vertica</alias>
+              <build><dockerFile>${project.basedir}/docker/Dockerfile.vertica</dockerFile></build>
               <run><containerNamePattern>vertica-it-db-${vertica.it.run-id}</containerNamePattern><platform>linux/amd64</platform>
                 <env><VERTICA_DB_NAME>vmart</VERTICA_DB_NAME></env>
                 <network><mode>custom</mode><name>vertica-it-${vertica.it.run-id}</name><alias>vertica-hostname</alias></network>
