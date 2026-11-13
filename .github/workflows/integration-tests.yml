@@ -154,13 +154,20 @@ jobs:
           for file in .elmLicInfo.plt; do
             destination="integration-test/conf/$file"
             # Preserve files already supplied in the checkout. Only absent files are staged.
-            if [[ ! -e "$destination" && -f "/it-conf/$file" && -r "/it-conf/$file" && -s "/it-conf/$file" ]]; then
+            if [[ ! -e "$destination" && -e "/it-conf/$file" ]]; then
+              if [[ ! -f "/it-conf/$file" || ! -r "/it-conf/$file" || ! -s "/it-conf/$file" ]]; then
+                echo '::error::The mounted license configuration must be a readable, nonempty file.'
+                exit 1
+              fi
               install -m 600 "/it-conf/$file" "$destination"
               echo 'staged_license=true' >> "$GITHUB_OUTPUT"
             fi
-            if [[ "$file" == .elmLicInfo.plt && ( ! -f "$destination" || ! -r "$destination" || ! -s "$destination" ) ]]; then
-              echo "::error::Missing readable license configuration: $destination. Supply an approved file through /it-conf."
+            if [[ -e "$destination" && ( ! -f "$destination" || ! -r "$destination" || ! -s "$destination" ) ]]; then
+              echo '::error::The supplied license configuration must be a readable, nonempty file.'
               exit 1
+            fi
+            if [[ ! -e "$destination" ]]; then
+              echo 'No external license configuration supplied; using the selected PDI image configuration if available.'
             fi
           done
           printf 'DOCKER_CONFIG=%s/vertica-docker-%s\n' "$RUNNER_TEMP" "$VERTICA_IT_RUN_ID" >> "$GITHUB_ENV"
