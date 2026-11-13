@@ -289,14 +289,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Remove run-local derived image
+      - name: Remove run-local derived images
         if: always()
         run: |
           set -euo pipefail
-          image="vertica-bulkloader-it:${VERTICA_IT_RUN_ID}"
-          if docker image inspect "$image" >/dev/null 2>&1; then
-            docker image rm -- "$image"
-          fi
+          for image in "vertica-bulkloader-it:${VERTICA_IT_RUN_ID}" "vertica-bulkloader-it-db:${VERTICA_IT_RUN_ID}"; do
+            if docker image inspect "$image" >/dev/null 2>&1; then
+              docker image rm -- "$image"
+            fi
+          done
 
       - name: Remove staged conf and run-local credentials
         if: always()
