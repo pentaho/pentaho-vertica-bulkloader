@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info><name>PDI-20802 active COPY abort</name><directory>/</directory><trans_type>Normal</trans_type><size_rowset>100</size_rowset><parameters/></info>
+  <connection>
+    <name>Vertica QA loader</name><server>vertica-hostname</server><type>VERTICA5</type><access>Native</access>
+    <database>vmart</database><port>5433</port><username>qa_loader</username><password>qa_ephemeral</password>
+    <attributes><attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute><attribute><code>USE_POOLING</code><attribute>N</attribute></attribute></attributes>
+  </connection>
+  <order>
+    <hop><from>PDI-20802 generate rows</from><to>PDI-20802 bulk load</to><enabled>Y</enabled></hop>
+    <hop><from>PDI-20802 bulk load</from><to>PDI-20802 abort</to><enabled>Y</enabled></hop>
+  </order>
+  <step>
+    <name>PDI-20802 generate rows</name><type>RowGenerator</type><distribute>Y</distribute><copies>1</copies>
+    <fields>
+      <field><name>source_id</name><type>Integer</type><length>15</length><precision>0</precision><nullif>7</nullif></field>
+      <field><name>source_payload</name><type>String</type><length>512</length><precision>-1</precision><nullif>@@PAYLOAD@@</nullif></field>
+    </fields>
+    <limit>@@ROWS@@</limit>
+  </step>
+  <step>
+    <name>PDI-20802 bulk load</name><type>VerticaBulkLoader</type><distribute>Y</distribute><copies>1</copies>
+    <connection>Vertica QA loader</connection><schema>public</schema><table>qa_target</table><specify_fields>Y</specify_fields>
+    <fields><field><column_name>payload</column_name><stream_name>source_payload</stream_name></field><field><column_name>id</column_name><stream_name>source_id</stream_name></field></fields>
+    <exceptions_filename/><rejected_data_filename/><abort_on_error>Y</abort_on_error><direct>Y</direct><stream_name>PDI-20802</stream_name>
+  </step>
+  <step>
+    <name>PDI-20802 abort</name><type>Abort</type><distribute>Y</distribute><copies>1</copies>
+    <row_threshold>5000</row_threshold><message>PDI-20802 intentional abort during COPY</message><always_log_rows>N</always_log_rows>
+  </step>
+  <step_error_handling/>
+</transformation>

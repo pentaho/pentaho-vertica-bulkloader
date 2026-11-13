@@ -2,3 +2,10 @@
 *.iml
 target/
 
+.env.test
+.env.integration
+integration-test/conf/.elmLicInfo.plt
+integration-test/conf/*.jar
+core/logs/
+.DS_Store
+
