@@ -2,9 +2,11 @@
 
 ## Scope and conclusion
 
-[PDI-20182](https://pentaho-eng.atlassian.net/browse/PDI-20182) addresses loading
-values into existing Vertica `LONG VARCHAR` and `LONG VARBINARY` columns with the
-Vertica Bulk Loader. Spoon-generated DDL is tracked separately in
+[PDI-20182](https://pentaho-eng.atlassian.net/browse/PDI-20182) reports that the
+Vertica Bulk Loader rejects existing `LONG VARCHAR` and `LONG VARBINARY` columns
+as unsupported. Jira's acceptance-criteria fields are empty. The passing tests
+directly validate the reported behavior for both types, including values over
+65,000 bytes, in the configuration below. Spoon-generated DDL is tracked separately in
 [PDI-18512](https://pentaho-eng.atlassian.net/browse/PDI-18512).
 
 **Conclusion: the core fix is validated for the configuration below, with a
@@ -90,8 +92,7 @@ loader copies will work.
 | PDI 10.2 and 11.0 backports | Not tested; validate separately if those releases are in scope. |
 | Spoon-generated DDL and Pentaho Server | Not tested by the headless Pan harness; generated DDL belongs to PDI-18512. |
 
-The supported JDBC target is the PDI image's 24.4 driver; JDBC 24.2 is not a
-required target for this ticket. Other widths, data patterns, multiple maximum-width
+The supported JDBC target is the PDI image's 24.4 driver. Other widths, data patterns, multiple maximum-width
 copies and the full cross-product of loading options were not exhaustively tested.
 
 ## Reproduction and evidence
