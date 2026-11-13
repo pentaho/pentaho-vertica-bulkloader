@@ -24,10 +24,11 @@ set the disposable `qa_loader` user's password algorithm to MD5. The default is
 database. The CI workflow also defaults to `false`; JDBC 24.4 was validated
 with the default authentication.
 
-An override is copied into the derived PDI image and its build context; the base
-image may also contain license configuration. Never publish derived images or
-build contexts. Clean run-scoped derived images and generated staging/build
-contexts after use. CI can obtain an override from its read-only `/it-conf` mount
-and can select an alternate JAR on that mount explicitly. See
+An override is copied into the running PDI container, not its derived image or
+build context. The base image may still contain license configuration, and older
+build contexts may contain overrides. Never publish derived images or build
+contexts. Clean run-scoped derived images and generated staging/build contexts
+after use. CI can obtain an override from its read-only `/it-conf` mount and can
+select an alternate JAR on that mount explicitly. See
 the [execution guide](../../integration-tests-README.md)
 and [SP-7772 QA results](../SP-7772-QA-summary.md).
