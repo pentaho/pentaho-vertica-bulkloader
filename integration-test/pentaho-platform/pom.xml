@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.pentaho</groupId><artifactId>vertica-bulkloader-integration-test</artifactId><version>1.0.0-SNAPSHOT</version></parent>
+  <artifactId>vertica-bulkloader-integration-test-pentaho-platform</artifactId>
+  <properties>
+    <vertica.it.stage>${project.build.directory}/stage</vertica.it.stage>
+    <vertica.it.evidence-dir>${project.build.directory}/evidence</vertica.it.evidence-dir>
+    <vertica.it.pdi-dir>/home/devuser/pentaho/design-tools/data-integration</vertica.it.pdi-dir>
+    <vertica.it.license-file>${project.basedir}/../conf/.elmLicInfo.plt</vertica.it.license-file>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version><scope>test</scope></dependency>
+    <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>3.25.3</version><scope>test</scope></dependency>
+  </dependencies>
+  <profiles><profile>
+    <id>integration-tests</id><activation><property><name>runIntegrationTests</name></property></activation>
+    <build><plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.1.0</version>
+        <executions><execution><id>stage-test-configuration</id><phase>process-test-resources</phase><goals><goal>run</goal></goals>
+          <configuration><target xmlns:if="ant:if">
+            <delete dir="${vertica.it.stage}" defaultexcludes="false"/><mkdir dir="${vertica.it.stage}/conf"/><mkdir dir="${vertica.it.stage}/lib"/>
+            <mkdir dir="${vertica.it.stage}/plugins"/><mkdir dir="${vertica.it.stage}/distribution"/>
+            <mkdir dir="${vertica.it.evidence-dir}"/>
+            <available file="${vertica.it.license-file}" type="file" property="license.available"/>
+            <condition property="license.override.configured"><not><equals arg1="${vertica.it.license-file}" arg2="${project.basedir}/../conf/.elmLicInfo.plt"/></not></condition>
+            <fail if="license.override.configured" unless="license.available" message="The specified license configuration does not exist."/>
+            <condition property="jdbc.override.configured"><not><equals arg1="${vertica.it.jdbc-file}" arg2=""/></not></condition>
+            <available file="${vertica.it.jdbc-file}" type="file" property="jdbc.override.exists"/>
+            <fail if="jdbc.override.configured" unless="jdbc.override.exists" message="The specified JDBC override does not exist."/>
+            <dirname property="jdbc.directory" file="${vertica.it.jdbc-file}"/>
+            <basename property="jdbc.filename" file="${vertica.it.jdbc-file}"/>
+            <copy todir="${vertica.it.stage}/lib" if:set="jdbc.override.configured"><fileset dir="${jdbc.directory}"><include name="${jdbc.filename}"/></fileset><globmapper from="*" to="vertica-jdbc.jar"/></copy>
+            <condition property="valid.source"><or><equals arg1="${vertica.it.source}" arg2="local"/><equals arg1="${vertica.it.source}" arg2="bundled"/></or></condition>
+            <fail unless="valid.source" message="vertica.it.source must be local or bundled"/>
+            <echo file="${vertica.it.stage}/conf/source">${vertica.it.source}</echo>
+            <echo file="${vertica.it.evidence-dir}/build.txt">PDI image: ${vertica.it.pdi-image}
+PDI build: ${vertica.it.pdi-build}
+PDI archive: ${vertica.it.pdi-archive}
+Plugin source: ${vertica.it.source}
+Candidate override: ${vertica.it.plugin-zip}
+Vertica image: ${vertica.it.vertica-image}
+Test-user MD5 authentication: ${vertica.it.test-md5-auth}
+Run: ${vertica.it.run-id}</echo>
+          </target></configuration>
+        </execution><execution><id>activate-test-license</id><phase>integration-test</phase><goals><goal>run</goal></goals>
+          <configuration><target xmlns:if="ant:if">
+            <available file="${vertica.it.license-file}" type="file" property="license.available"/>
+            <condition property="license.override.configured"><not><equals arg1="${vertica.it.license-file}" arg2="${project.basedir}/../conf/.elmLicInfo.plt"/></not></condition>
+            <fail if="license.override.configured" unless="license.available" message="The specified license configuration does not exist."/>
+            <exec executable="docker" failonerror="true" if:set="license.available">
+              <arg value="exec"/><arg value="${docker.container.pdi.id}"/><arg value="mkdir"/><arg value="-p"/><arg value="/root/.pentaho"/>
+            </exec>
+            <exec executable="docker" failonerror="true" if:set="license.available">
+              <arg value="cp"/><arg value="${vertica.it.license-file}"/><arg value="${docker.container.pdi.id}:/root/.pentaho/.elmLicInfo.plt"/>
+            </exec>
+          </target></configuration>
+        </execution></executions>
+      </plugin>
+      <plugin>
+        <groupId>io.fabric8</groupId><artifactId>docker-maven-plugin</artifactId><version>0.48.1</version>
+        <configuration>
+          <autoCreateCustomNetworks>true</autoCreateCustomNetworks><startParallel>false</startParallel>
+          <images>
+            <image><name>vertica-bulkloader-it-db:${vertica.it.run-id}</name><alias>vertica</alias>
+              <build><dockerFile>${project.basedir}/docker/Dockerfile.vertica</dockerFile></build>
+              <run><containerNamePattern>vertica-it-db-${vertica.it.run-id}</containerNamePattern><platform>linux/amd64</platform>
+                <env><VERTICA_DB_NAME>vmart</VERTICA_DB_NAME></env>
+                <network><mode>custom</mode><name>vertica-it-${vertica.it.run-id}</name><alias>vertica-hostname</alias></network>
+                <wait><log>Vertica is now running</log><time>600000</time></wait>
+                <log><file>${vertica.it.evidence-dir}/vertica.log</file></log>
+              </run>
+            </image>
+            <image><name>vertica-bulkloader-it:${vertica.it.run-id}</name><alias>pdi</alias>
+              <build>
+                <from>${vertica.it.pdi-image}</from>
+                <assemblies>
+                  <assembly><name>test-conf</name><targetDir>/home/devuser/pentaho</targetDir><inline><fileSets>
+                    <fileSet><directory>${vertica.it.stage}/conf</directory><outputDirectory>.</outputDirectory><useDefaultExcludes>false</useDefaultExcludes></fileSet>
+                  </fileSets></inline></assembly>
+                  <assembly><name>driver</name><targetDir>/tmp/vertica-it-driver</targetDir><inline><fileSets>
+                    <fileSet><directory>${vertica.it.stage}/lib</directory><outputDirectory>.</outputDirectory></fileSet>
+                  </fileSets></inline></assembly>
+                  <assembly><name>distribution</name><targetDir>/tmp/vertica-it-distribution</targetDir><inline><fileSets>
+                    <fileSet><directory>${vertica.it.stage}/distribution</directory><outputDirectory>.</outputDirectory></fileSet>
+                  </fileSets></inline></assembly>
+                  <assembly><name>candidate</name><targetDir>/tmp/vertica-it-plugin</targetDir><inline><fileSets>
+                    <fileSet><directory>${vertica.it.stage}/plugins</directory><outputDirectory>.</outputDirectory></fileSet>
+                  </fileSets></inline></assembly>
+                  <assembly><name>scripts</name><targetDir>/tmp/vertica-it-scripts</targetDir><inline><fileSets>
+                    <fileSet><directory>${project.basedir}/docker</directory><outputDirectory>.</outputDirectory></fileSet>
+                  </fileSets></inline></assembly>
+                  <assembly><name>tests</name><targetDir>/tmp/vertica-it-tests</targetDir><inline><fileSets>
+                    <fileSet><directory>${project.build.testOutputDirectory}/transformations</directory><outputDirectory>transformations</outputDirectory></fileSet>
+                    <fileSet><directory>${project.build.testOutputDirectory}/jobs</directory><outputDirectory>jobs</outputDirectory></fileSet>
+                  </fileSets></inline></assembly>
+                </assemblies>
+                <runCmds>
+                  <run>bash /tmp/vertica-it-scripts/prepare-runtime.sh ${vertica.it.pdi-dir}</run>
+                  <run>if [ "$(cat /home/devuser/pentaho/source)" = local ]; then rm -rf ${vertica.it.pdi-dir}/plugins/VerticaBulkLoader; cp -a /tmp/vertica-it-plugin/VerticaBulkLoader ${vertica.it.pdi-dir}/plugins/; fi</run>
+                  <run>chmod +x ${vertica.it.pdi-dir}/*.sh</run>
+                  <run>cp -a /tmp/vertica-it-tests/. ${vertica.it.pdi-dir}/</run>
+                </runCmds>
+              </build>
+              <run><containerNamePattern>vertica-it-pdi-${vertica.it.run-id}</containerNamePattern><platform>linux/amd64</platform>
+                <network><mode>custom</mode><name>vertica-it-${vertica.it.run-id}</name><alias>pdi-hostname</alias></network>
+                <dependsOn><container>vertica</container></dependsOn>
+                <cmd><exec><arg>tail</arg><arg>-f</arg><arg>/dev/null</arg></exec></cmd>
+              </run>
+            </image>
+          </images>
+        </configuration>
+        <executions>
+          <execution><id>start-integration-containers</id><phase>pre-integration-test</phase><goals><goal>build</goal><goal>start</goal></goals></execution>
+          <execution><id>stop-integration-containers</id><phase>post-integration-test</phase><goals><goal>stop</goal></goals></execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><version>3.2.5</version>
+        <configuration><rerunFailingTestsCount>0</rerunFailingTestsCount><systemPropertyVariables>
+          <vertica.it.pdi-container-id>${docker.container.pdi.id}</vertica.it.pdi-container-id>
+          <vertica.it.vertica-container-id>${docker.container.vertica.id}</vertica.it.vertica-container-id>
+          <vertica.it.evidence-dir>${vertica.it.evidence-dir}</vertica.it.evidence-dir>
+          <vertica.it.test-md5-auth>${vertica.it.test-md5-auth}</vertica.it.test-md5-auth>
+        </systemPropertyVariables></configuration>
+        <executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions>
+      </plugin>
+    </plugins></build>
+  </profile>
+  <profile><id>candidate-plugin</id><activation><property><name>vertica.it.source</name><value>local</value></property></activation>
+    <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.1.0</version>
+      <executions><execution><id>stage-candidate</id><phase>prepare-package</phase><goals><goal>run</goal></goals><configuration><target>
+        <fileset id="candidate.archives" dir="${project.basedir}/../../assemblies/plugin/target" erroronmissingdir="false" includes="vertica-bulkloader-plugin-*.zip"/>
+        <condition property="candidate.default.unique"><resourcecount refid="candidate.archives" count="1"/></condition>
+        <pathconvert property="candidate.default.path" refid="candidate.archives"/>
+        <condition property="candidate.explicit"><not><equals arg1="${vertica.it.plugin-zip}" arg2=""/></not></condition>
+        <condition property="candidate.valid"><or><isset property="candidate.explicit"/><isset property="candidate.default.unique"/></or></condition>
+        <fail unless="candidate.valid" message="Build exactly one candidate assembly or specify -Dvertica.it.plugin-zip=/absolute/path."/>
+        <condition property="candidate.path" value="${vertica.it.plugin-zip}" else="${candidate.default.path}"><isset property="candidate.explicit"/></condition>
+        <checksum file="${candidate.path}" algorithm="SHA-256" property="candidate.sha256"/>
+        <echo file="${vertica.it.evidence-dir}/candidate.txt">Candidate: ${candidate.path}
+      SHA-256: ${candidate.sha256}</echo>
+        <unzip src="${candidate.path}" dest="${vertica.it.stage}/plugins"/>
+        <available file="${vertica.it.stage}/plugins/VerticaBulkLoader" type="dir" property="candidate.available"/>
+        <fail unless="candidate.available" message="Candidate ZIP must contain the VerticaBulkLoader directory"/>
+      </target></configuration></execution></executions>
+    </plugin></plugins></build>
+  </profile>
+  <profile><id>bundled-plugin</id><activation><property><name>vertica.it.source</name><value>bundled</value></property></activation></profile>
+  <profile><id>exact-pdi-build</id><activation><property><name>vertica.it.pdi-archive</name></property></activation>
+    <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.1.0</version>
+      <executions><execution><id>stage-exact-runtime</id><phase>prepare-package</phase><goals><goal>run</goal></goals><configuration><target>
+        <unzip src="${vertica.it.pdi-archive}" dest="${vertica.it.stage}/distribution"><patternset><include name="data-integration/**"/></patternset></unzip>
+        <available file="${vertica.it.stage}/distribution/data-integration/pan.sh" property="runtime.available"/>
+        <fail unless="runtime.available" message="PDI archive must contain data-integration/pan.sh at its root"/>
+      </target></configuration></execution></executions>
+    </plugin></plugins></build>
+  </profile>
+  </profiles>
+</project>

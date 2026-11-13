@@ -1,0 +1,56 @@
+name: Setup Maven Settings
+description: Retrieve common Pentaho Maven settings and configure repository authentication
+
+inputs:
+  m2-directory:
+    description: Directory in which to stage settings.xml (not the shared dependency cache)
+    required: true
+  artifactory-base-url:
+    description: Artifactory base URL
+    required: true
+  artifactory-host:
+    description: Artifactory Docker registry host
+    required: true
+  artifactory-user:
+    description: Artifactory username
+    required: true
+  artifactory-api-key:
+    description: Artifactory API key
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Retrieve common Maven settings
+      id: common-maven
+      uses: pentaho/actions-common@stable
+
+    - name: Stage settings and configure repository environment
+      shell: bash
+      env:
+        SETTINGS_SOURCE: ${{ steps.common-maven.outputs.settings-file-path }}
+        M2_DIRECTORY: ${{ inputs.m2-directory }}
+        ARTIFACTORY_BASE_URL: ${{ inputs.artifactory-base-url }}
+        ARTIFACTORY_HOST: ${{ inputs.artifactory-host }}
+        ARTIFACTORY_USER: ${{ inputs.artifactory-user }}
+        ARTIFACTORY_API_KEY: ${{ inputs.artifactory-api-key }}
+      run: |
+        set -euo pipefail
+        for name in SETTINGS_SOURCE M2_DIRECTORY ARTIFACTORY_BASE_URL ARTIFACTORY_HOST ARTIFACTORY_USER ARTIFACTORY_API_KEY; do
+          value="${!name}"
+          if [[ -z "$value" || "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            echo "::error::$name must be configured as a nonempty single-line value"
+            exit 1
+          fi
+        done
+        test -r "$SETTINGS_SOURCE"
+        umask 077
+        mkdir -p "$M2_DIRECTORY"
+        install -m 600 "$SETTINGS_SOURCE" "$M2_DIRECTORY/settings.xml"
+        {
+          printf 'RESOLVE_REPO_MIRROR=%s/pnt-mvn\n' "${ARTIFACTORY_BASE_URL%/}"
+          printf 'NEXUS_DEPLOY_USER=%s\n' "$ARTIFACTORY_USER"
+          printf 'NEXUS_DEPLOY_PASSWORD=%s\n' "$ARTIFACTORY_API_KEY"
+          printf 'DOCKER_PULL_REGISTRY=%s/pnt-docker/\n' "${ARTIFACTORY_HOST%/}"
+          printf 'MAVEN_SETTINGS_FILE=%s/settings.xml\n' "$M2_DIRECTORY"
+        } >> "$GITHUB_ENV"

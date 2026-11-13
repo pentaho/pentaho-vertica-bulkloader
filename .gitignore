@@ -1,4 +1,6 @@
 .idea/
 *.iml
 target/
+integration-test/conf/.elmLicInfo.plt
+integration-test/conf/*.jar
 
