@@ -102,6 +102,61 @@ the integration Maven command. Historical 461 runs with JDBC 6 failed during
 pooled connection initialization, and JDBC 9.2.1-0 exposed separate cleanup and
 pooled-load failures. Do not interpret failures as expected passes or suppress them in CI.
 
+To run the PDI-20182 suite, use `-Dit.test=VerticaBulkLoaderLongTypesIT`. It loads
+pre-created `LONG VARCHAR` and `LONG VARBINARY` columns from deterministic source
+tables with Pan and native COPY. Its Table Input-to-Bulk Loader fixture adapts the
+supported-types samples attached to the ticket; it does not depend on their original
+database or Spoon-generated DDL. A second fixture adapts the ticket's Janino
+UTF-8 conversion. The archive's Janino plugin is disabled by `.kettle-ignore`; the
+test temporarily enables it inside the disposable container and restores the marker.
+
+The following results are from bundled PDI `11.1.0.0-468`, Vertica CE 24.1 and the
+image's JDBC driver, on 2026-11-13. Expected values are checked independently,
+including bounded SHA-256 chunks for large values. These are point-in-time results,
+not guarantees for other builds or drivers.
+
+| Test | Scenario and expected result | Result |
+| --- | --- | --- |
+| `mappedDirectCopiesTextAndBinary` | Small UTF-8 text and binary with reordered mapping and direct COPY; both values match. | Pass |
+| `longVarcharWithOrdinaryVarbinary` | Long text with ordinary binary; both values match. | Pass |
+| `longVarbinaryWithOrdinaryVarchar` | Long binary with ordinary text; both values match. | Pass |
+| `defaultWidthLongVarchar` | Default-width long text with ordinary binary; both values match. | Pass |
+| `defaultWidthLongVarbinary` | Default-width long binary with ordinary text; both values match. | Pass |
+| `copiesValuesAroundShortTypeLimit` | Text and binary at 64,999, 65,000 and 65,001 bytes; all contents and lengths match. | Pass |
+| `mappedDirectCopiesValuesBeyondShortTypeLimit` | Long UTF-8 text and patterned binary above 65,000 bytes; all contents and lengths match. | Pass |
+| `positionalNonDirectCopiesNullAndEmptyValues` | Positional non-direct COPY preserves null and empty values as distinct states. | Pass |
+| `janinoConvertsTextToLongBinary` | Janino converts null, empty, small and long text to UTF-8 binary; source and target contents match. | Pass, Janino enabled |
+| `multipleCopiesPreserveLongValues` | Three copies each process rows; all 600 distinct IDs and values match. | Pass |
+| `highVolumeLongColumnsPreserveAllRows` | Load 1,048,575 rows; IDs are unique and all text and binary values match. | Pass |
+| `overWidthTextFailsAndRecovers` | Over-width text causes a SQL error without losing the previous committed row; a subsequent valid load succeeds. | Pass |
+| `overWidthBinaryFailsAndRecovers` | Over-width binary causes a SQL error without losing the previous committed row; a subsequent valid load succeeds. | Pass |
+| `maximumWidthLongVarchar` | Load 32,000,000 bytes of text; every chunk and the length match. | Pass with 4 GB heap; fails with default 2 GB heap |
+| `maximumWidthLongVarbinary` | Load 32,000,000 bytes of binary; every chunk and the length match. | Pass with 4 GB heap; fails with default 2 GB heap |
+
+The maximum-width tests are excluded unless explicitly enabled because the encoder
+requests a nearly 2 GB buffer per loader copy. In the default distribution heap
+(`-Xmx2048m`), both tests failed with `OutOfMemoryError` in `StreamEncoder` before
+COPY; they passed when Pan was given a 4 GB heap. Run only on a suitably provisioned,
+isolated Docker host with sufficient memory for both PDI and Vertica:
+
+```bash
+mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
+  -DrunIntegrationTests -Dvertica.it.source=bundled \
+  -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
+  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=qa-maximum-width \
+  '-Dit.test=VerticaBulkLoaderLongTypesIT#maximumWidth*' \
+  -Dvertica.it.run-wide-tests=true \
+  '-Dvertica.it.pdi-java-options=-Xms256m -Xmx4g'
+```
+
+The combined regression run passed all 13 normal long-type tests and 12 existing
+PDI-20802/lifecycle tests; the two maximum-width tests were skipped there and passed
+separately with the larger heap. Spoon-generated DDL (PDI-18512) and Pentaho Server
+are not exercised by this headless Pan harness. PDI 10.2/11.0 backports and the
+full cross-product of modes and widths remain unverified. JDBC 24.4 from the PDI
+image is the supported target. See the [PDI-20182 QA summary](integration-test/PDI-20182-QA-summary.md)
+for the maximum-width finding and prioritized gaps.
+
 ## CI
 
 [The GitHub workflow](.github/workflows/integration-tests.yml) runs on pushes to

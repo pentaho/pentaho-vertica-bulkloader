@@ -17,7 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -59,12 +61,17 @@ class VerticaBulkLoaderIT {
 
   @BeforeAll
   void setUpDatabase() throws Exception {
+    setUpDatabase( "PDI-20802-" );
+  }
+
+  /** Initializes the disposable database and creates a suite-specific evidence directory. */
+  void setUpDatabase( String evidencePrefix ) throws Exception {
     pdiContainer = requiredProperty( "vertica.it.pdi-container-id" );
     verticaContainer = requiredProperty( "vertica.it.vertica-container-id" );
     Path root = Path.of( requiredProperty( "vertica.it.evidence-dir" ) );
     assertThat( root.isAbsolute() ).as( "Evidence must be an absolute HOST path" ).isTrue();
     Files.createDirectories( root );
-    suiteEvidence = Files.createTempDirectory( root, "PDI-20802-" );
+    suiteEvidence = Files.createTempDirectory( root, evidencePrefix );
     evidence = Files.createDirectories( suiteEvidence.resolve( "setup" ) );
     requireSuccess( DockerUtils.exec( evidence, "jdbc-provenance", SQL_TIMEOUT, pdiContainer,
       "cat", "/home/devuser/pentaho/vertica-it-driver.txt" ) );
@@ -196,6 +203,36 @@ class VerticaBulkLoaderIT {
     return runPdi( rows, payload, true, true, true, null, 1, "load.ktr", false, true );
   }
 
+  /** Runs the long-type transformation with the requested direct and mapping modes. */
+  String runLongTypes( boolean direct, boolean mapping ) throws Exception {
+    return runLongTypes( direct, mapping, 1 );
+  }
+
+  /** Runs the long-type transformation with the requested modes and loader copy count. */
+  String runLongTypes( boolean direct, boolean mapping, int copies ) throws Exception {
+    return runPdi( 1, "", direct, mapping, false, null, copies, "long-types.ktr", false, false );
+  }
+
+  /** Runs the long-type transformation expecting a loader SQL error matching the supplied pattern. */
+  String runLongTypesExpectingSqlError( String expectedSqlError ) throws Exception {
+    return runPdi( 1, "", true, true, false, expectedSqlError, 1, "long-types.ktr", false, false );
+  }
+
+  /** Temporarily enables bundled Janino and runs the ticket-inspired string-to-binary transformation. */
+  String runLongTypesJanino() throws Exception {
+    String pluginDirectory = PDI_ROOT + "/plugins/janino";
+    requireSuccess( DockerUtils.exec( evidence, "enable-janino", SQL_TIMEOUT, pdiContainer,
+      "sh", "-c", "if [ -f \"$1/.kettle-ignore\" ]; then "
+        + "mv \"$1/.kettle-ignore\" \"$1/.kettle-ignore-pdi20182\"; fi", "--", pluginDirectory ) );
+    try {
+      return runPdi( 1, "", true, true, false, null, 1, "long-types-janino.ktr", false, false );
+    } finally {
+      requireSuccess( DockerUtils.exec( evidence, "restore-janino", SQL_TIMEOUT, pdiContainer,
+        "sh", "-c", "if [ -f \"$1/.kettle-ignore-pdi20182\" ]; then "
+          + "mv \"$1/.kettle-ignore-pdi20182\" \"$1/.kettle-ignore\"; fi", "--", pluginDirectory ) );
+    }
+  }
+
   private String runPdi( int rows, String payload, boolean direct, boolean mapping, boolean kitchen,
                          String expectedSqlError, int copies, String resource, boolean abort, boolean pooledRecovery )
     throws Exception {
@@ -223,7 +260,12 @@ class VerticaBulkLoaderIT {
           invocation.resolve( "failure-handler.kjb" ), Map.of( "TRANSFORMATION", transformation ) );
         DockerUtils.copyToContainer( invocation, pdiContainer, job, fixture );
       }
-      DockerUtils.ExecResult result;
+      String javaOptions = System.getProperty( "vertica.it.pdi-java-options", "" );
+      List<String> command = new ArrayList<>( List.of( "exec", "--env", "TZ=UTC" ) );
+      if ( !javaOptions.isBlank() ) {
+        command.addAll( List.of( "--env", "PENTAHO_DI_JAVA_OPTIONS=" + javaOptions ) );
+      }
+      command.addAll( List.of( "--workdir", PDI_ROOT, pdiContainer, "bash", "-c", WATCHDOG, "--", "bash" ) );
       if ( "slow-input.ktr".equals( resource ) ) {
         String script = "fifo=$1; launcher=$2; fixture=$3; rows=$4; payload=$5; "
           + "mkfifo \"$fifo\" || exit 2; "
@@ -232,16 +274,14 @@ class VerticaBulkLoaderIT {
           + "trap 'kill \"$writer\" 2>/dev/null || true; rm -f -- \"$fifo\"' EXIT; "
           + "bash \"$launcher\" \"-file=$fixture\" -level=Detailed; result=$?; "
           + "if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi; wait \"$writer\" || exit 2";
-        result = DockerUtils.run( invocation, "pan", HOST_TIMEOUT,
-          "exec", "--env", "TZ=UTC", "--workdir", PDI_ROOT, pdiContainer,
-          "bash", "-c", WATCHDOG, "--", "bash", "-c", script, "--",
-          fifo, PDI_ROOT + "/pan.sh", fixture, Integer.toString( rows ), payload );
+        command.addAll( List.of( "-c", script, "--", fifo, PDI_ROOT + "/pan.sh", fixture,
+          Integer.toString( rows ), payload ) );
       } else {
-        result = DockerUtils.run( invocation, kitchen ? "kitchen" : "pan", HOST_TIMEOUT,
-          "exec", "--env", "TZ=UTC", "--workdir", PDI_ROOT, pdiContainer,
-          "bash", "-c", WATCHDOG, "--", "bash",
-          PDI_ROOT + ( kitchen ? "/kitchen.sh" : "/pan.sh" ), "-file=" + fixture, "-level=Detailed" );
+        command.addAll( List.of( PDI_ROOT + ( kitchen ? "/kitchen.sh" : "/pan.sh" ), "-file=" + fixture,
+          "-level=Detailed" ) );
       }
+      DockerUtils.ExecResult result = DockerUtils.run( invocation, kitchen ? "kitchen" : "pan", HOST_TIMEOUT,
+        command.toArray( new String[ 0 ] ) );
       String output = result.output();
       assertThat( result.exitCode() ).as( "Natural PDI exit; 124/137/timeouts are failures. Evidence: %s%n%s",
         result.log(), output ).isEqualTo( expectedSqlError == null && !abort ? 0 : 1 );
@@ -251,7 +291,8 @@ class VerticaBulkLoaderIT {
       if ( expectedSqlError != null ) {
         // A generic Pan failure or producer-side IOException alone does not prove SQL propagation.
         assertThat( output ).contains( "SQL Error during statement execution." );
-        assertThat( output ).containsPattern( "(?im)^.*PDI-20802 bulk load.*SQL Error during statement execution\\." );
+        String stepName = "long-types.ktr".equals( resource ) ? "Load long types" : "PDI-20802 bulk load";
+        assertThat( output ).containsPattern( "(?im)^.*" + stepName + ".*SQL Error during statement execution\\." );
         assertThat( output.toLowerCase( Locale.ROOT ) ).containsPattern( expectedSqlError );
       }
       assertNoLoaderSessions();

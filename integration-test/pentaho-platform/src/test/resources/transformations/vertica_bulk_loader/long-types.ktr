@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info>
+    <name>PDI-20182 long types</name>
+    <directory>/</directory>
+    <trans_type>Normal</trans_type>
+    <size_rowset>100</size_rowset>
+    <parameters/>
+  </info>
+  <connection>
+    <name>Vertica QA loader</name>
+    <server>vertica-hostname</server>
+    <type>VERTICA5</type>
+    <access>Native</access>
+    <database>vmart</database>
+    <port>5433</port>
+    <username>qa_loader</username>
+    <password>qa_ephemeral</password>
+    <attributes><attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute></attributes>
+  </connection>
+  <order><hop><from>Read source</from><to>Load long types</to><enabled>Y</enabled></hop></order>
+  <step>
+    <name>Read source</name>
+    <type>TableInput</type>
+    <distribute>Y</distribute><copies>1</copies>
+    <connection>Vertica QA loader</connection>
+    <sql>SELECT source_id, source_text, source_binary FROM public.qa_long_source ORDER BY source_id</sql>
+    <limit>0</limit>
+    <execute_each_row>N</execute_each_row>
+    <variables_active>N</variables_active>
+    <lazy_conversion_active>N</lazy_conversion_active>
+    <GUI><xloc>100</xloc><yloc>80</yloc><draw>Y</draw></GUI>
+  </step>
+  <step>
+    <name>Load long types</name>
+    <type>VerticaBulkLoader</type>
+    <distribute>Y</distribute><copies>@@COPIES@@</copies>
+    <connection>Vertica QA loader</connection>
+    <schema>public</schema><table>qa_target</table>
+    <specify_fields>@@MAPPING@@</specify_fields>
+    <fields>
+      <field><column_name>payload_binary</column_name><stream_name>source_binary</stream_name></field>
+      <field><column_name>payload_text</column_name><stream_name>source_text</stream_name></field>
+      <field><column_name>id</column_name><stream_name>source_id</stream_name></field>
+    </fields>
+    <exceptions_filename/><rejected_data_filename/>
+    <abort_on_error>Y</abort_on_error><direct>@@DIRECT@@</direct>
+    <stream_name>PDI-20182</stream_name>
+    <GUI><xloc>420</xloc><yloc>80</yloc><draw>Y</draw></GUI>
+  </step>
+  <step_error_handling/>
+</transformation>
