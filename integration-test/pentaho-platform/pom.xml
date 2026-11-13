@@ -24,10 +24,9 @@
             <delete dir="${vertica.it.stage}" defaultexcludes="false"/><mkdir dir="${vertica.it.stage}/conf"/><mkdir dir="${vertica.it.stage}/lib"/>
             <mkdir dir="${vertica.it.stage}/plugins"/><mkdir dir="${vertica.it.stage}/distribution"/>
             <mkdir dir="${vertica.it.evidence-dir}"/>
-            <available file="${vertica.it.license-file}" property="license.available"/>
+            <available file="${vertica.it.license-file}" type="file" property="license.available"/>
             <condition property="license.override.configured"><not><equals arg1="${vertica.it.license-file}" arg2="${project.basedir}/../conf/.elmLicInfo.plt"/></not></condition>
             <fail if="license.override.configured" unless="license.available" message="The specified license configuration does not exist."/>
-            <copy file="${vertica.it.license-file}" tofile="${vertica.it.stage}/conf/.elmLicInfo.plt" if:set="license.available"/>
             <condition property="jdbc.override.configured"><not><equals arg1="${vertica.it.jdbc-file}" arg2=""/></not></condition>
             <available file="${vertica.it.jdbc-file}" type="file" property="jdbc.override.exists"/>
             <fail if="jdbc.override.configured" unless="jdbc.override.exists" message="The specified JDBC override does not exist."/>
@@ -45,6 +44,18 @@ Candidate override: ${vertica.it.plugin-zip}
 Vertica image: ${vertica.it.vertica-image}
 Test-user MD5 authentication: ${vertica.it.test-md5-auth}
 Run: ${vertica.it.run-id}</echo>
+          </target></configuration>
+        </execution><execution><id>activate-test-license</id><phase>integration-test</phase><goals><goal>run</goal></goals>
+          <configuration><target xmlns:if="ant:if">
+            <available file="${vertica.it.license-file}" type="file" property="license.available"/>
+            <condition property="license.override.configured"><not><equals arg1="${vertica.it.license-file}" arg2="${project.basedir}/../conf/.elmLicInfo.plt"/></not></condition>
+            <fail if="license.override.configured" unless="license.available" message="The specified license configuration does not exist."/>
+            <exec executable="docker" failonerror="true" if:set="license.available">
+              <arg value="exec"/><arg value="${docker.container.pdi.id}"/><arg value="mkdir"/><arg value="-p"/><arg value="/root/.pentaho"/>
+            </exec>
+            <exec executable="docker" failonerror="true" if:set="license.available">
+              <arg value="cp"/><arg value="${vertica.it.license-file}"/><arg value="${docker.container.pdi.id}:/root/.pentaho/.elmLicInfo.plt"/>
+            </exec>
           </target></configuration>
         </execution></executions>
       </plugin>

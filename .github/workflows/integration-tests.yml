@@ -289,10 +289,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Remove run-local derived images
+      - name: Remove run-local Docker resources
         if: always()
         run: |
           set -euo pipefail
+          for container in "vertica-it-pdi-${VERTICA_IT_RUN_ID}" "vertica-it-db-${VERTICA_IT_RUN_ID}"; do
+            if docker container inspect "$container" >/dev/null 2>&1; then
+              docker rm -f -- "$container"
+            fi
+          done
+          network="vertica-it-${VERTICA_IT_RUN_ID}"
+          if docker network inspect "$network" >/dev/null 2>&1; then
+            docker network rm "$network"
+          fi
           for image in "vertica-bulkloader-it:${VERTICA_IT_RUN_ID}" "vertica-bulkloader-it-db:${VERTICA_IT_RUN_ID}"; do
             if docker image inspect "$image" >/dev/null 2>&1; then
               docker image rm -- "$image"

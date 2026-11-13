@@ -134,8 +134,10 @@ should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
 recorded; no JVM class-load trace or automatic whole-image or installed-plugin
 checksum manifest is claimed.
 
-Derived images and `target/stage` and `target/docker` contexts contain the license
-configuration. Do not publish them. CI attempts run-scoped cleanup even on failure;
+License overrides are copied into the running container, not the derived image or
+build context. The base image may contain license configuration, and older build
+contexts may contain overrides. Do not publish derived images or build contexts.
+CI attempts run-scoped cleanup even on failure;
 after interrupted local runs remove only that run's containers, network and derived
 image, plus the generated staging/build contexts. Preserve the supplied
 configuration, test evidence and other operators' Docker resources. See the

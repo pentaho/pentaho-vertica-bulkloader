@@ -7,9 +7,10 @@ configuration, not an offline entitlement; service access and a valid
 entitlement are required. The file is ignored by Git and must not be printed or
 uploaded.
 
-An override is copied into the derived PDI image and its build context; the base
-image may also contain license configuration. Never publish derived images or
-build contexts. CI can obtain an override from its read-only `/it-conf` mount.
+An override is copied into the running PDI container, not its derived image or
+build context. The base image may still contain license configuration, and older
+build contexts may contain overrides. Never publish derived images or build
+contexts. CI can obtain an override from its read-only `/it-conf` mount.
 
 No JDBC JAR is tracked here. By default the harness uses the distribution's
 driver, or the automation image's driver when the distribution has none.
