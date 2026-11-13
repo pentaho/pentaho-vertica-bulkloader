@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<job>
+  <name>PDI-20802 pooled recovery</name><directory>/</directory>
+  <connection>
+    <name>Vertica audit admin</name><server>vertica-hostname</server><type>VERTICA5</type><access>Native</access>
+    <database>vmart</database><port>5433</port><username>dbadmin</username><password/>
+    <attributes><attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute><attribute><code>USE_POOLING</code><attribute>N</attribute></attribute></attributes>
+  </connection>
+  <entries>
+    <entry><name>START</name><type>SPECIAL</type><start>Y</start><dummy>N</dummy><repeat>N</repeat><draw>Y</draw><xloc>70</xloc><yloc>80</yloc></entry>
+    <entry><name>PDI-20802 denied load</name><type>TRANS</type><specification_method>filename</specification_method><filename>@@TRANSFORMATION@@</filename><wait_until_finished>Y</wait_until_finished><parameters><pass_all_parameters>N</pass_all_parameters></parameters><draw>Y</draw><xloc>240</xloc><yloc>80</yloc></entry>
+    <entry><name>PDI-20802 restore access</name><type>SQL</type><connection>Vertica audit admin</connection><sql>GRANT INSERT ON public.qa_target TO qa_loader</sql><useVariableSubstitution>N</useVariableSubstitution><draw>Y</draw><xloc>430</xloc><yloc>150</yloc></entry>
+    <entry><name>PDI-20802 pooled recovery</name><type>TRANS</type><specification_method>filename</specification_method><filename>@@TRANSFORMATION@@</filename><wait_until_finished>Y</wait_until_finished><parameters><pass_all_parameters>N</pass_all_parameters></parameters><draw>Y</draw><xloc>650</xloc><yloc>150</yloc></entry>
+    <entry><name>PDI-20802 unexpected success</name><type>ABORT</type><message>PDI-20802 denied load unexpectedly succeeded</message><draw>Y</draw><xloc>430</xloc><yloc>30</yloc></entry>
+  </entries>
+  <hops>
+    <hop><from>START</from><to>PDI-20802 denied load</to><enabled>Y</enabled><unconditional>Y</unconditional><evaluation>Y</evaluation></hop>
+    <hop><from>PDI-20802 denied load</from><to>PDI-20802 restore access</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>N</evaluation></hop>
+    <hop><from>PDI-20802 denied load</from><to>PDI-20802 unexpected success</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>Y</evaluation></hop>
+    <hop><from>PDI-20802 restore access</from><to>PDI-20802 pooled recovery</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>Y</evaluation></hop>
+  </hops>
+</job>
