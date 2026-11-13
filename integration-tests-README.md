@@ -27,8 +27,9 @@ the plugin built from the checkout.
   Silicon requires amd64 emulation. Allow sufficient memory and disk.
 - Access to internal Maven and Docker registries, the build catalog and the PDI
   archive repository; configure Maven and Docker credentials separately.
-- An approved local ELM configuration at `integration-test/conf/.elmLicInfo.plt`
-  or selected with `-Dvertica.it.license-file=/absolute/path`. It is a
+- The selected PDI image may provide an ELM configuration. To override it, place
+  an approved file at `integration-test/conf/.elmLicInfo.plt` or select one with
+  `-Dvertica.it.license-file=/absolute/path`. It is a
   license-service connection, not an offline entitlement: the container needs
   service connectivity and a valid entitlement. The default local file is
   ignored by Git; do not print or upload its contents.
@@ -125,8 +126,9 @@ The `k8s` runner needs `PDIA_AC_CONTAINER_IMAGE`, `ARTIFACTORY_HOST` and
 and the `/it-conf` runner mount. The job image must supply a suitable JDK for the
 checkout (Java 17 for 11.0), Maven, Docker,
 Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
-service access. `/it-conf` provides the license configuration and can provide an
-alternate JAR selected through `jdbc_file`. The workflow preserves existing
+service access. `/it-conf` can provide an approved license configuration and an
+alternate JAR selected through `jdbc_file`. Without an external configuration,
+the run relies on the selected PDI image. The workflow preserves existing
 checkout files. Remote
 execution on `k8s` has **not** been validated.
 

@@ -25,8 +25,9 @@
             <mkdir dir="${vertica.it.stage}/plugins"/><mkdir dir="${vertica.it.stage}/distribution"/>
             <mkdir dir="${vertica.it.evidence-dir}"/>
             <available file="${vertica.it.license-file}" property="license.available"/>
-            <fail unless="license.available" message="Provide integration-test/conf/.elmLicInfo.plt (or -Dvertica.it.license-file). No license is downloaded."/>
-            <copy file="${vertica.it.license-file}" tofile="${vertica.it.stage}/conf/.elmLicInfo.plt"/>
+            <condition property="license.override.configured"><not><equals arg1="${vertica.it.license-file}" arg2="${project.basedir}/../conf/.elmLicInfo.plt"/></not></condition>
+            <fail if="license.override.configured" unless="license.available" message="The specified license configuration does not exist."/>
+            <copy file="${vertica.it.license-file}" tofile="${vertica.it.stage}/conf/.elmLicInfo.plt" if:set="license.available"/>
             <condition property="jdbc.override.configured"><not><equals arg1="${vertica.it.jdbc-file}" arg2=""/></not></condition>
             <available file="${vertica.it.jdbc-file}" type="file" property="jdbc.override.exists"/>
             <fail if="jdbc.override.configured" unless="jdbc.override.exists" message="The specified JDBC override does not exist."/>
