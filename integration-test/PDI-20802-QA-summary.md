@@ -248,6 +248,21 @@ The harness renders the templates with scenario-specific settings before executi
 | `pooledConnectionRecoversInSameKitchenJvm` | [load.ktr][load-fixture] | [pooled-recovery.kjb][pooled-fixture] |
 | `transformationAbortDuringCopy` | [abort.ktr][abort-fixture] | None |
 
+### Fixture steps and job entries
+
+Step and entry names below are prefixed with `PDI-20802` in the fixtures.
+
+| Fixture | Steps or job entries and purpose |
+| --- | --- |
+| [load.ktr][load-fixture] | **Generate Rows** (`generate rows`) creates an ID and payload; **Vertica Bulk Loader** (`bulk load`) loads them using native COPY. The harness selects the row count, mapping, direct mode, pooling and number of copies. |
+| [slow-input.ktr][slow-fixture] | **Text File Input** (`slow rows`) reads the harness-fed FIFO; **Vertica Bulk Loader** (`bulk load`) loads the rows until EOF. |
+| [abort.ktr][abort-fixture] | **Generate Rows** (`generate rows`) feeds **Vertica Bulk Loader** (`bulk load`), followed by **Abort** (`abort`), configured with a 5,000-row threshold. The test separately verifies that COPY was active when Abort fired. |
+| [failure-handler.kjb][failure-fixture] | **Start** runs **Transformation** (`load`). On failure, **SQL** (`failure audit`) writes an audit marker and **Abort** (`preserve failure`) fails the job. Unexpected success goes to a separate **Abort** (`unexpected success`). |
+| [pooled-recovery.kjb][pooled-fixture] | **Start** runs **Transformation** (`denied load`). On failure, **SQL** (`restore access`) grants INSERT and **Transformation** (`pooled recovery`) retries in the same Kitchen JVM. Unexpected success goes to **Abort** (`unexpected success`). |
+
+The Java harness prepares permissions and test data and independently checks
+results and sessions; those actions are not all steps in the fixtures.
+
 [load-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/load.ktr
 [slow-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/slow-input.ktr
 [abort-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/abort.ktr
