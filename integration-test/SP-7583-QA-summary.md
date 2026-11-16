@@ -10,13 +10,37 @@ identifies `10.2.0.11-456` (SP RC 18) as containing the follow-up. The 10.2
 scope includes PR #101 (`6e9c9630`), PR #105 (`cc313f0b`) and JDBC 24 follow-up
 PR #109 (`941639a6`).
 
-On November 12, 2026, build 456 passed all 12 integration scenarios with both
-the published bundled plugin and the rebased 10.2 candidate, using the updated
-automation image's JDBC 24.4 driver and normal authentication. This is not full
+The 10.2 candidate passed all 12 integration scenarios in remote `k8s` CI on
+PDI `10.2.0.11-459`. Earlier local build 456 runs passed all 12 scenarios with
+both the published bundled plugin and the rebased candidate. This is not full
 acceptance: original cluster-health faults, the exact pooled lease race, Spoon
-Stop, slow COPY finalization and remote CI remain unvalidated.
+Stop and slow COPY finalization remain unvalidated.
 
 ## Automated results
+
+### Latest CI: build 459
+
+On November 15, 2026, [10.2 PR CI attempt 3](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43491546622/attempts/3)
+passed all 12 integration tests with no failures or skips. The candidate plugin
+from commit `8dc1e755` was tested on PDI `10.2.0.11-459` with JDBC `24.4.0-0`
+and disposable Vertica CE `24.1.0-0`, on runner `pentaho-runner-8vjwq-0`.
+No external license override was supplied, so the image configuration was used.
+This CI run tested the candidate, not the distribution-bundled plugin.
+
+[Attempt 1](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43491546622/attempts/1)
+failed to start Vertica due to a sudoers ownership problem. [Attempt 2](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43491546622/attempts/2)
+passed 9 of 12 integration tests; three timed out during license TLS handshakes.
+The later pass does not establish that these intermittent infrastructure issues
+are resolved. The workflow resolves the latest PDI build unless one is pinned.
+
+For help interpreting reports and per-test logs, see the
+[evidence guide](../integration-tests-README.md#reading-test-evidence).
+
+### Latest local comparison: build 456
+
+On November 12, 2026, build 456 passed all 12 scenarios with both the bundled
+plugin and the rebased 10.2 candidate, using the automation image's JDBC 24.4
+driver and normal authentication.
 
 | Plugin | Integration result | Maven duration / finish (UTC) |
 | --- | --- | --- |
@@ -55,6 +79,32 @@ Kitchen failure handling, repeated failure/recovery, multi-copy EOF, slow finite
 input, multi-copy failure, Abort during active COPY and pooled failure/recovery
 in one Kitchen JVM. The latter does not prove reuse of the same physical
 connection or exercise the competing-borrower forced-stop race.
+
+### CI scenario results
+
+The following scenarios all passed in the build 459 candidate CI run above.
+The templates are rendered with scenario-specific settings before execution.
+
+| Scenario | Goal and expected result | Coverage area | Transformation and job fixtures |
+| --- | --- | --- | --- |
+| `healthyEofLargeStream` | 100,000 mapped/direct rows finish at EOF and preserve values. | Normal completion | [load.ktr][load-fixture] |
+| `defaultMappingNonDirect` | 17 positional/non-direct rows finish and preserve values. | Mapping and COPY mode | [load.ktr][load-fixture] |
+| `emptyInput` | An empty stream succeeds without target rows. | Empty stream | [load.ktr][load-fixture] |
+| `copyStartPermissionDenied` | A COPY permission error propagates and commits no rows. | COPY-start error | [load.ktr][load-fixture] |
+| `serverCheckRejectionAborts` | A server CHECK rejection propagates and commits no rows. | Server-side rejection | [load.ktr][load-fixture] |
+| `kitchenFailureBranch` | The error hop writes one audit marker and ABORT fails the job. | Job error handling | [load.ktr][load-fixture], [failure-handler.kjb][failure-fixture] |
+| `repeatedFailureThenRecovery` | Two failures are followed by a successful 23-row load in separate PDI processes. | Failure and recovery | [load.ktr][load-fixture] |
+| `multipleCopiesCompleteAtEof` | Three copies commit all 100,000 correct rows. | Concurrent copies; EOF | [load.ktr][load-fixture] |
+| `slowInputCompletesAtEof` | 100 rows stream for over five seconds and commit at EOF. | Slow upstream input | [slow-input.ktr][slow-fixture] |
+| `multipleCopiesStopAfterCopyFailure` | Three copies finish after a permission error and commit no rows. | Concurrent copies; failure | [load.ktr][load-fixture] |
+| `pooledConnectionRecoversInSameKitchenJvm` | After a pooled failure, restored access permits a 100,000-row load in the same Kitchen JVM. | Pooling and recovery | [load.ktr][load-fixture], [pooled-recovery.kjb][pooled-fixture] |
+| `transformationAbortDuringCopy` | Abort during server-confirmed active COPY terminates naturally and commits no rows. | Active COPY cancellation | [abort.ktr][abort-fixture] |
+
+[load-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/load.ktr
+[slow-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/slow-input.ktr
+[abort-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/abort.ktr
+[failure-fixture]: pentaho-platform/src/test/resources/jobs/vertica_bulk_loader/failure-handler.kjb
+[pooled-fixture]: pentaho-platform/src/test/resources/jobs/vertica_bulk_loader/pooled-recovery.kjb
 
 ### Historical build 453 results
 
@@ -156,6 +206,7 @@ errors and server/PDI logs, capture thread and session state, and measure natura
 termination and error-hop behavior. Verify rollback and a healthy load after
 restoration. Separately validate Spoon Stop, slow COPY finalization and the exact
 pooled lease race. Record pass/fail/not-run and evidence; never induce these faults
-on a shared system. Remote CI has not been run. A watchdog kill is always a failure.
+on a shared system. Multiple-copy forced stop and an immediate-failure latency
+requirement are also not validated. A watchdog kill is always a failure.
 
 See the [execution guide](../integration-tests-README.md) for setup and cleanup.
