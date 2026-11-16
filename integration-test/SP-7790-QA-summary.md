@@ -50,12 +50,16 @@ Janino was temporarily enabled in the disposable container and restored afterwar
 The Java 11 candidate build also passed 74 project unit tests and two harness
 helper tests.
 
+The [PR integration run](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43897286717)
+also passed with the checkout-built candidate on build `10.2.0.11-459`: 74 project
+unit tests, two helper tests and 25 normal integration tests passed. The two
+opt-in maximum-width tests were skipped in CI.
+
 ## Remaining coverage and evidence
 
 Non-direct loading of actual values over 65,000 bytes, full default-width values,
 multiple maximum-width loader copies, Spoon UI and Pentaho Server were not tested.
 Results apply to the stated configuration; no JVM class-load trace was captured.
-CI for this test backport has not been run.
 
 Reproduction options are in the [integration test README](../integration-tests-README.md).
 Local evidence is retained under the platform module's `target/evidence-sp7790-*`
