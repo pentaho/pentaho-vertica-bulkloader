@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <!-- Standalone reactor: testing a published distribution does not build plugin sources. -->
+  <groupId>org.pentaho</groupId><artifactId>vertica-bulkloader-integration-test</artifactId>
+  <version>1.0.0-SNAPSHOT</version><packaging>pom</packaging>
+  <modules><module>pentaho-platform</module></modules>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>11</maven.compiler.release>
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <vertica.it.run-id>local</vertica.it.run-id>
+    <vertica.it.pdi-image>repo.pentaho.com/pnt-docker/automation/pdi-client:11.1</vertica.it.pdi-image>
+    <vertica.it.vertica-image>repo.pentaho.com/docker/vertica-ce:24.1.0-0</vertica.it.vertica-image>
+    <vertica.it.source>bundled</vertica.it.source>
+    <vertica.it.plugin-zip/>
+    <vertica.it.license-file>${maven.multiModuleProjectDirectory}/conf/.elmLicInfo.plt</vertica.it.license-file>
+    <vertica.it.jdbc-file/>
+    <vertica.it.test-md5-auth>false</vertica.it.test-md5-auth>
+    <!-- Optional exact-build distribution ZIP supplied locally, never downloaded by the suite. -->
+    <vertica.it.pdi-archive/>
+    <vertica.it.pdi-build>unspecified</vertica.it.pdi-build>
+  </properties>
+  <build><pluginManagement><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version></plugin>
+  </plugins></pluginManagement></build>
+</project>
