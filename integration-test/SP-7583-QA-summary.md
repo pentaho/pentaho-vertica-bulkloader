@@ -100,6 +100,21 @@ The templates are rendered with scenario-specific settings before execution.
 | `pooledConnectionRecoversInSameKitchenJvm` | After a pooled failure, restored access permits a 100,000-row load in the same Kitchen JVM. | Pooling and recovery | [load.ktr][load-fixture], [pooled-recovery.kjb][pooled-fixture] |
 | `transformationAbortDuringCopy` | Abort during server-confirmed active COPY terminates naturally and commits no rows. | Active COPY cancellation | [abort.ktr][abort-fixture] |
 
+### Fixture steps and job entries
+
+Step and entry names below are prefixed with `SP-7583` in the fixtures.
+
+| Fixture | Steps or job entries and purpose |
+| --- | --- |
+| [load.ktr][load-fixture] | **Generate Rows** (`generate rows`) creates an ID and payload; **Vertica Bulk Loader** (`bulk load`) loads them using native COPY. The harness selects the row count, mapping, direct mode, pooling and number of copies. |
+| [slow-input.ktr][slow-fixture] | **Text File Input** (`slow rows`) reads the harness-fed FIFO; **Vertica Bulk Loader** (`bulk load`) loads the rows until EOF. |
+| [abort.ktr][abort-fixture] | **Generate Rows** (`generate rows`) feeds **Vertica Bulk Loader** (`bulk load`), followed by **Abort** (`abort`), configured with a 5,000-row threshold. The test separately verifies that COPY was active when Abort fired. |
+| [failure-handler.kjb][failure-fixture] | **Start** runs **Transformation** (`load`). On failure, **SQL** (`failure audit`) writes an audit marker and **Abort** (`preserve failure`) fails the job. Unexpected success goes to a separate **Abort** (`unexpected success`). |
+| [pooled-recovery.kjb][pooled-fixture] | **Start** runs **Transformation** (`denied load`). On failure, **SQL** (`restore access`) grants INSERT and **Transformation** (`pooled recovery`) retries in the same Kitchen JVM. Unexpected success goes to **Abort** (`unexpected success`). |
+
+The Java harness prepares permissions and test data and independently checks
+results and sessions; those actions are not all steps in the fixtures.
+
 [load-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/load.ktr
 [slow-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/slow-input.ktr
 [abort-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/abort.ktr
