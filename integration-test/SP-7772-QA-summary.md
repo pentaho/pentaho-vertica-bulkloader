@@ -14,7 +14,23 @@ identifies `11.0.0.4-332` as containing the follow-up.
 
 ## Results
 
-### Latest: build 332 with the 11.0.0.4 image
+### Latest CI: build 334
+
+On November 13, 2026, [11.0 PR CI attempt 1](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43491538873/attempts/1)
+passed all 12 integration tests with no failures or skips. The candidate plugin
+from commit `b1b00844` was tested on PDI `11.0.0.4-334` with JDBC `24.4.0-0`
+and disposable Vertica CE `24.1.0-0`, on runner `pentaho-runner-shrrb-0`.
+No external license override was supplied, so the image configuration was used.
+This CI run tested the candidate, not the distribution-bundled plugin.
+
+An [earlier CI run](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43431178584)
+had a license TLS stall; the successful run does not establish that the
+intermittent licensing issue is resolved.
+
+For help interpreting reports and per-test logs, see the
+[evidence guide](../integration-tests-README.md#reading-test-evidence).
+
+### Latest local comparison: build 332 with the 11.0.0.4 image
 
 On November 12, 2026, both the published `11.0.0.4-332` plugin and the 11.0
 candidate were tested with the `11.0.0.4` automation image, its JDBC 24.4 driver,
@@ -51,6 +67,32 @@ pooled-lease release ordering; these are mock-based unit tests, not integration
 proof of the forced-stop race. The bundled and candidate binaries are separate
 variants and are not assumed to be identical.
 
+## CI scenario results
+
+The following scenarios all passed in the build 334 candidate CI run above.
+The templates are rendered with scenario-specific settings before execution.
+
+| Scenario | Goal and expected result | Coverage area | Transformation and job fixtures |
+| --- | --- | --- | --- |
+| `healthyEofLargeStream` | 100,000 mapped/direct rows finish at EOF and preserve values. | Normal completion | [load.ktr][load-fixture] |
+| `defaultMappingNonDirect` | 17 positional/non-direct rows finish and preserve values. | Mapping and COPY mode | [load.ktr][load-fixture] |
+| `emptyInput` | An empty stream succeeds without target rows. | Empty stream | [load.ktr][load-fixture] |
+| `copyStartPermissionDenied` | A COPY permission error propagates and commits no rows. | COPY-start error | [load.ktr][load-fixture] |
+| `serverCheckRejectionAborts` | A server CHECK rejection propagates and commits no rows. | Server-side rejection | [load.ktr][load-fixture] |
+| `kitchenFailureBranch` | The error hop writes one audit marker and ABORT fails the job. | Job error handling | [load.ktr][load-fixture], [failure-handler.kjb][failure-fixture] |
+| `repeatedFailureThenRecovery` | Two failures are followed by a successful 23-row load in separate PDI processes. | Failure and recovery | [load.ktr][load-fixture] |
+| `multipleCopiesCompleteAtEof` | Three copies commit all 100,000 correct rows. | Concurrent copies; EOF | [load.ktr][load-fixture] |
+| `slowInputCompletesAtEof` | 100 rows stream for over five seconds and commit at EOF. | Slow upstream input | [slow-input.ktr][slow-fixture] |
+| `multipleCopiesStopAfterCopyFailure` | Three copies finish after a permission error and commit no rows. | Concurrent copies; failure | [load.ktr][load-fixture] |
+| `pooledConnectionRecoversInSameKitchenJvm` | After a pooled failure, restored access permits a 100,000-row load in the same Kitchen JVM. | Pooling and recovery | [load.ktr][load-fixture], [pooled-recovery.kjb][pooled-fixture] |
+| `transformationAbortDuringCopy` | Abort during server-confirmed active COPY terminates naturally and commits no rows. | Active COPY cancellation | [abort.ktr][abort-fixture] |
+
+[load-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/load.ktr
+[slow-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/slow-input.ktr
+[abort-fixture]: pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/abort.ktr
+[failure-fixture]: pentaho-platform/src/test/resources/jobs/vertica_bulk_loader/failure-handler.kjb
+[pooled-fixture]: pentaho-platform/src/test/resources/jobs/vertica_bulk_loader/pooled-recovery.kjb
+
 ## Coverage and limitations
 
 The real Pan/Kitchen and Vertica integration suites cover healthy and empty
@@ -65,6 +107,7 @@ to run without manual termination for Vertica SQL exceptions. The passing proxy
 cases provide partial evidence, not proof for every SQL exception or pooled
 connection. Original mergeout-queue, disk-space and broken-projection failures,
 Spoon Stop, slow COPY finalization, the exact pooled-wrapper lease race and
-remote CI require separate validation. A timeout or forced termination is a
-failure. See the [execution guide](../integration-tests-README.md) for setup and
-evidence details.
+multiple-copy forced stop require separate validation. The tests do not prove the
+absence of every in-JVM thread leak or measure an immediate-failure latency
+requirement. A timeout or forced termination is a failure. See the
+[execution guide](../integration-tests-README.md) for setup and evidence details.
