@@ -153,8 +153,11 @@ Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
 service access. `/it-conf` can provide an approved license configuration and an
 alternate JAR selected through `jdbc_file`. Without an external configuration,
 the run relies on the selected PDI image. The workflow preserves existing
-checkout files. Remote `k8s` validation results and limitations are in the
-[QA summary](integration-test/SP-7772-QA-summary.md).
+checkout files. Remote `k8s` validation results and limitations for the original
+harness are in the [QA summary](integration-test/SP-7772-QA-summary.md). The
+[long-type PR integration run](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43897253829)
+passed on `k8s` with PDI `11.0.0.4-335` and the checkout-built plugin. It ran
+25 normal integration tests and skipped the two opt-in maximum-width tests.
 
 ## Assertions, evidence and cleanup
 
