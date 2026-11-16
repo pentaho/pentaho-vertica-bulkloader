@@ -102,6 +102,30 @@ the integration Maven command. Do not interpret failures as expected passes or
 suppress them in CI. The inherited fixture labels mention PDI-20802 because
 SP-7772 is its 11.0 backport; they do not select a different plugin or release.
 
+## SP-7791 long-type coverage
+
+`VerticaBulkLoaderLongTypesIT` tests existing `LONG VARCHAR` and `LONG VARBINARY`
+columns using Pan and native COPY. Run it with
+`-Dit.test=VerticaBulkLoaderLongTypesIT`. The Janino scenario temporarily enables
+the bundled plugin in the disposable container and restores its marker afterward.
+
+For the two opt-in 32,000,000-byte tests, resolve build `11.0.0.4-335` above
+and use a suitably provisioned Docker host:
+
+```bash
+mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
+  -DrunIntegrationTests -Dvertica.it.source=bundled \
+  -Dvertica.it.pdi-image="$image" -Dvertica.it.pdi-build="$build" \
+  -Dvertica.it.pdi-archive="$archive" -Dvertica.it.run-id=sp7791-wide \
+  '-Dit.test=VerticaBulkLoaderLongTypesIT#maximumWidth*' \
+  -Dvertica.it.run-wide-tests=true \
+  '-Dvertica.it.pdi-java-options=-Xms256m -Xmx4g'
+```
+
+Both maximum-width tests failed with the default heap on build 335 and passed
+with the 4 GB workaround. See the [SP-7791 QA summary](integration-test/SP-7791-QA-summary.md)
+for the release-specific results and the separately tracked memory limitation.
+
 ## CI
 
 [The GitHub workflow](.github/workflows/integration-tests.yml) runs on pushes and
