@@ -72,6 +72,21 @@ environment-specific transformation verbatim. Janino is disabled in the tested
 archive by `.kettle-ignore`; the test temporarily enables it inside the disposable
 container and restores the marker afterward.
 
+### Transformations and scenarios
+
+All 15 scenarios run in Pan; none uses a Kitchen job. The harness creates the
+source and target tables and renders scenario-specific settings before execution.
+
+| Fixture | Steps | Scenarios |
+| --- | --- | --- |
+| [long-types.ktr](pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/long-types.ktr) | **Read source** (Table Input) reads the generated source table; **Load long types** (Vertica Bulk Loader) writes the existing target using native COPY. | All scenarios in the table above except the Janino conversion; the harness varies target types, mapping, direct mode, source values and loader copies. |
+| [long-types-janino.ktr](pentaho-platform/src/test/resources/transformations/vertica_bulk_loader/long-types-janino.ktr) | **Read source** feeds **Convert to UTF-8** (Janino), then **Load long types** writes text and converted binary. | Ticket-inspired Janino UTF-8 conversion. |
+
+The [test class](pentaho-platform/src/test/java/org/pentaho/di/verticabulkload/it/VerticaBulkLoaderLongTypesIT.java)
+prepares data and independently checks target values, lengths and sessions; those
+checks are not all transformation steps. The test names and expected outcomes are
+listed in the [integration test README](../integration-tests-README.md).
+
 A negative-control run against bundled PDI `11.1.0.0-461` failed with
 `Column type LONG VARBINARY not supported`, as expected for the older plugin.
 It also logged a separate missing `com.vertica.jdbc.SConnection` cleanup class;
@@ -105,10 +120,55 @@ copies and the full cross-product of loading options were not exhaustively teste
 ## Reproduction and evidence
 
 The [integration test README](../integration-tests-README.md) contains run
-commands, transformation details and the opt-in maximum-width configuration.
-The suite is `VerticaBulkLoaderLongTypesIT`; the normal run uses the default Pan
-heap, and the maximum-width run requires `vertica.it.run-wide-tests=true` and a
-suitably provisioned isolated Docker host. Local evidence is retained under the
-platform module's `target/evidence-pdi20182-regression`,
-`target/evidence-pdi20182-maximum` and `target/evidence-pdi20182-maxfinal`.
-These are local generated logs, not committed certification; review before sharing.
+commands, an [evidence guide](../integration-tests-README.md#reading-test-evidence)
+and the opt-in maximum-width configuration. The suite is
+`VerticaBulkLoaderLongTypesIT`; the normal run uses the default Pan heap, and the
+maximum-width run requires `vertica.it.run-wide-tests=true` and a suitably
+provisioned isolated Docker host.
+
+### CI evidence to attach
+
+The post-rebase [CI run, attempt 5](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43943289889/attempts/5)
+passed with the checkout-built candidate on PDI `11.1.0.0-472`: 74 project unit
+tests, two helper tests and 25 normal integration tests passed; the two wide tests
+were skipped. Attempts 1 and 4 failed during database setup; attempts 2 and 3
+timed out in lifecycle tests. The later pass does not establish that the
+intermittent failures are resolved.
+
+From that run's **Artifacts**, download `vertica-evidence-43943289889-5` as a
+ZIP. It contains the Failsafe reports and the same per-test evidence structure as
+local runs. In `failsafe-reports/TEST-org.pentaho.di.verticabulkload.it.VerticaBulkLoaderLongTypesIT.xml`,
+13 cases passed and the two maximum-width cases have `skipped` children; there
+are no wide-test execution logs in this CI ZIP. Normal test logs are under
+`evidence/PDI-20182-<id>/<test-name>-<id>/`. Artifacts are retained for 30 days;
+download while available and review logs and metadata for sensitive information
+before attaching them to Jira. The successful attempt's artifact was listed as
+expiring on December 16, 2026; retention can change. Never attach license
+configuration or Docker build contexts.
+
+### Local maximum-width evidence to attach
+
+The following paths are under `integration-test/pentaho-platform/target/` in
+the local PDI-20182 test worktree. They are generated evidence, not committed
+certification:
+
+| Evidence directory | Plugin and outcome |
+| --- | --- |
+| `evidence-pdi20182-maximum` | Bundled PDI 468, default 2 GB Pan heap: both wide tests failed with `OutOfMemoryError`; both Pan status files record `exit=1`. |
+| `evidence-pdi20182-maxfinal` | Bundled PDI 468, 4 GB Pan heap: both wide tests passed; both Pan status files record `exit=0`. |
+| `evidence-pdi20182-rebase-wide-1116` | Locally built candidate on PDI 468, 4 GB Pan heap: both wide tests passed; this is separate from the bundled run. |
+
+Each directory contains `build.txt` and per-test `PDI-20182-<id>/maximumWidth...`
+directories with Pan logs, status and SQL query output. The 4 GB successes verify
+the 32,000,000-byte length and 1,000 bounded chunk hashes for each value; the
+Java test contains the expected assertions, since recorded SQL commands are
+redacted. These evidence directories do not contain their Failsafe reports.
+At the time of this review, `target/failsafe-reports` contains the matching
+candidate 4 GB report: its recorded evidence directory is
+`evidence-pdi20182-rebase-wide-1116`, its source is `local`, and its heap is
+`-Xmx4g`. That default report directory is overwritten by later runs; verify its
+properties before pairing it with evidence. It is not the report for the bundled
+default-heap or bundled 4 GB runs. Review the desired logs, reports and metadata,
+then package them separately from the CI ZIP for Jira, clearly labeling plugin
+source, heap and outcome. Local artifacts remain on the test host and are not
+included in CI uploads.

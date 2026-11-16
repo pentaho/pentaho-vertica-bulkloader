@@ -226,11 +226,26 @@ reports contain individual test cases; a passing case has no `failure`, `error`
 or `skipped` child. The corresponding `.txt` reports summarize each test class and
 include failure details when present.
 
+For PDI-20182, also inspect `TEST-...VerticaBulkLoaderLongTypesIT.xml` and its
+`.txt` report. The normal CI run skips `maximumWidthLongVarchar` and
+`maximumWidthLongVarbinary`; a skipped case has no execution evidence in that run.
+See the [PDI-20182 QA summary](integration-test/PDI-20182-QA-summary.md#reproduction-and-evidence)
+for the CI ZIP and separately retained local maximum-width evidence.
+
 To investigate one test, find its `<test-name>-<id>` directory under
 `evidence/PDI-20802-<id>/`. There is a separate suite directory for each test
 class. The numeric suffixes distinguish generated files and directories; they
 do not indicate execution order. A test may have several `pan-<id>` or
 `kitchen-<id>` invocation directories.
+
+The long-type suite instead uses `evidence/PDI-20182-<id>/<test-name>-<id>/`.
+Its normal cases use Pan; the two over-width cases each have an expected failing
+Pan invocation and a successful recovery invocation. Interpret each status in
+the context of the scenario and its JUnit result.
+
+For a local run with `vertica.it.evidence-dir`, replace the `evidence/` root in
+these paths with that run's configured directory. Match saved reports to the same
+run; the default Failsafe report directory is overwritten by later runs.
 
 | File | Contents |
 | --- | --- |
