@@ -14,7 +14,8 @@ significant maximum-width limitation.** Values of both long types, including
 values over 65,000 bytes, loaded correctly. However, both maximum-width tests
 failed with the distribution's default 2 GB Pan heap; they passed with a 4 GB heap.
 Full maximum-width support with default settings is therefore not validated.
-QA sign-off depends on whether that limitation is acceptable or tracked separately.
+The product owner and developer agreed to track the limitation separately in
+[PDI-21096](https://pentaho-eng.atlassian.net/browse/PDI-21096).
 
 ## Environment and execution
 
@@ -35,6 +36,12 @@ from the PDI image. Its recorded SHA-256 is
 `cc720c960d2280643b5c1d463a15e05a97fe9f456b30d1dfb5f16405ecbb0637`.
 No JDBC override was used. This is staged-driver provenance, not a JVM class-load
 trace. Results are specific to this configuration.
+
+The [PR integration run](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43856426183)
+passed on November 16, 2026 using the checkout-built candidate plugin with PDI
+`11.1.0.0-472`: 74 project unit tests, two helper tests and 25 normal integration
+tests passed. The two opt-in maximum-width tests were skipped in CI. This CI
+result is separate from the bundled build 468 results below.
 
 ## Test results
 
@@ -88,8 +95,8 @@ loader copies will work.
 | Non-direct COPY with values over 65,000 bytes | Not tested; highest-value remaining mode check because non-direct currently covers only null and empty values. |
 | Direct/positional and non-direct/reordered mapping with long values | Not tested; lower priority unless these combinations are required workflows. |
 | Default 1 MB width with a 1 MB value | Not tested; small values in default-width columns passed. |
-| Maximum width with default heap | Failed; product/QA decision needed on whether the limitation blocks acceptance. |
-| PDI 10.2 and 11.0 backports | Not tested; validate separately if those releases are in scope. |
+| Maximum width with default heap | Failed; tracked separately in PDI-21096. |
+| PDI 10.2 and 11.0 backports | Tested separately; see the [SP-7790](https://github.com/pentaho/pentaho-vertica-bulkloader/blob/SP-7790_tests/integration-test/SP-7790-QA-summary.md) and [SP-7791](https://github.com/pentaho/pentaho-vertica-bulkloader/blob/SP-7791_tests/integration-test/SP-7791-QA-summary.md) QA summaries. |
 | Spoon-generated DDL and Pentaho Server | Not tested by the headless Pan harness; generated DDL belongs to PDI-18512. |
 
 The supported JDBC target is the PDI image's 24.4 driver. Other widths, data patterns, multiple maximum-width

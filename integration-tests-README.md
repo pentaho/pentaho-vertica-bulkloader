@@ -152,8 +152,9 @@ mvn --batch-mode --no-transfer-progress -f integration-test/pom.xml verify \
 The combined regression run passed all 13 normal long-type tests and 12 existing
 PDI-20802/lifecycle tests; the two maximum-width tests were skipped there and passed
 separately with the larger heap. Spoon-generated DDL (PDI-18512) and Pentaho Server
-are not exercised by this headless Pan harness. PDI 10.2/11.0 backports and the
-full cross-product of modes and widths remain unverified. JDBC 24.4 from the PDI
+are not exercised by this headless Pan harness. PDI 10.2/11.0 backports are
+validated separately in SP-7790 and SP-7791; the full cross-product of modes and
+widths remains unverified. JDBC 24.4 from the PDI
 image is the supported target. See the [PDI-20182 QA summary](integration-test/PDI-20182-QA-summary.md)
 for the maximum-width finding and prioritized gaps.
 
@@ -187,9 +188,12 @@ checkout (Java 17 for master), Maven, Docker,
 Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
 service access. `/it-conf` can provide an approved license configuration and an
 alternate JDBC JAR selected through `jdbc_file`. Without an external configuration,
-the run relies on the selected PDI image. The workflow preserves
-existing checkout files. Remote `k8s` validation results and limitations are in
-the [QA summary](integration-test/PDI-20802-QA-summary.md).
+the run relies on the selected PDI image. The workflow preserves existing checkout
+files. Remote `k8s` validation results and limitations for the original harness
+are in the [QA summary](integration-test/PDI-20802-QA-summary.md). The
+[long-type PR integration run](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43856426183)
+passed on `k8s` with PDI `11.1.0.0-472` and the checkout-built plugin. It ran
+25 normal integration tests and skipped the two opt-in maximum-width tests.
 
 ## Assertions, evidence and cleanup
 
