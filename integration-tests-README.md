@@ -133,8 +133,8 @@ Bash, `curl` and `jq`; it also needs registry, catalog, repository and licensing
 service access. `/it-conf` can provide an approved license configuration and an
 alternate JDBC JAR selected through `jdbc_file`. Without an external configuration,
 the run relies on the selected PDI image. The workflow preserves
-existing checkout files. Remote
-execution on `k8s` has **not** been validated.
+existing checkout files. Remote `k8s` validation results and limitations are in
+the [QA summary](integration-test/PDI-20802-QA-summary.md).
 
 ## Assertions, evidence and cleanup
 
@@ -142,9 +142,10 @@ The original seven serial tests cover healthy large-stream EOF, positional non-d
 empty input, permission and CHECK failures, Kitchen's error branch, and recovery
 after repeated failures. The separate five-test lifecycle suite adds multi-copy
 EOF and failure, slow finite input, Abort during server-confirmed active COPY,
-and pooled failure/recovery in one Kitchen JVM. Successful launchers must exit 0. Expected failures must
-exit naturally with code 1 and the loader's SQL error plus the expected server
-detail, and unexpected cleanup or uncaught missing-class errors fail the test;
+and pooled failure/recovery in one Kitchen JVM. Successful launchers must exit 0.
+Expected SQL failures must exit naturally with code 1 and the loader's SQL error
+plus the expected server detail; the intentional Abort also exits with code 1.
+Unexpected cleanup or uncaught missing-class errors fail the test;
 database assertions verify rows and session closure. Each launcher runs in a
 separate process group. After 120 seconds the watchdog sends QUIT for diagnostics
 and forcibly terminates any remaining process group after a timeout; a timeout or
@@ -157,6 +158,56 @@ top-level build labels are overwritten on the next run. Resolver provenance is i
 evidence JSON/log/text for 30 days, not Docker contexts or license files. Logs
 should be reviewed before sharing. JDBC and candidate ZIP source and SHA-256 are
 recorded; no automatic whole-image or installed-plugin checksum manifest is claimed.
+
+### Reading test evidence
+
+Start with `failsafe-reports/failsafe-summary.xml` for overall results. The
+`TEST-...VerticaBulkLoaderIT.xml` and `TEST-...VerticaBulkLoaderLifecycleIT.xml`
+reports contain individual test cases; a passing case has no `failure`, `error`
+or `skipped` child. The corresponding `.txt` reports summarize each test class and
+include failure details when present.
+
+To investigate one test, find its `<test-name>-<id>` directory under
+`evidence/PDI-20802-<id>/`. There is a separate suite directory for each test
+class. The numeric suffixes distinguish generated files and directories; they
+do not indicate execution order. A test may have several `pan-<id>` or
+`kitchen-<id>` invocation directories.
+
+| File | Contents |
+| --- | --- |
+| `pan-<id>.log`, `kitchen-<id>.log` | Detailed transformation or job output, including loader messages and errors. |
+| `<name>.log.command` | Command that produced the corresponding log; SQL statements are redacted. |
+| `<name>.log.status` | Command exit status, or `HOST_TIMEOUT_OR_INTERRUPTION`. |
+| `vsql-<id>.log` | Database setup or query output, including row and session counts. |
+| `loader-sessions-<id>.log` | Snapshot of Vertica sessions for the test loader user. |
+| `pdi-processes-<id>.log` | Snapshot of processes in the PDI container. |
+| `docker-cp-<id>.log` | Output from copying a rendered fixture into the PDI container. |
+
+For example, `copyStartPermissionDenied` should have a Pan log with the expected
+permission error and a launcher status of `exit=1`; check its database and
+session evidence as well. A nonzero launcher status is not automatically a test
+failure: interpret it using the scenario and the JUnit result. Exit codes 124
+and 137, host timeouts and forced termination are failures. For
+`repeatedFailureThenRecovery`, inspect all three Pan invocations: two expected
+failures followed by a successful load. The Kitchen failure-branch and pooled
+recovery scenarios use Kitchen logs.
+
+At the evidence root, `build.txt` records run configuration, `candidate.txt`
+identifies the candidate and checksum when a candidate is used,
+`pdi-build-provenance.txt` records the resolved build and archive provenance,
+and `vertica.log` contains Vertica container output. Each suite's `setup/` contains setup SQL output,
+`jdbc-provenance-<id>.log` and `generated-directories-<id>.log` with their
+command and status files.
+
+CI does not upload the rendered transformation or job files. Because SQL is
+redacted in recorded commands, a `vsql` output alone may not identify which
+query produced it; consult the test code and the scenario table in the
+[QA summary](integration-test/PDI-20802-QA-summary.md). Session and process
+snapshots do not prove the absence of all in-JVM thread leaks. Review evidence
+before sharing: logs and metadata may contain internal paths, URLs or other
+sensitive operational details.
+
+### Cleanup
 
 License overrides are copied into the running container, not the derived image or
 build context. The base image may contain license configuration, and older build

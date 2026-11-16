@@ -24,6 +24,9 @@ These automated results alone do not prove all ticket criteria.
 
 ### Latest CI: PDI 11.1.0.0-470
 
+For help interpreting the reports and per-test logs, see the
+[evidence guide](../integration-tests-README.md#reading-test-evidence).
+
 On November 14, 2026, [master PR CI attempt 2](https://github.com/pentaho/pentaho-vertica-bulkloader/actions/runs/43491523317/attempts/2)
 passed all 74 project unit tests and all 12 integration tests, with no failures
 or skips. It tested the candidate plugin from commit `306e6a3e` on PDI
