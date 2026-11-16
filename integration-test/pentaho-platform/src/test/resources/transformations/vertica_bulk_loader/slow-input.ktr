@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info><name>SP-7583 slow input EOF</name><directory>/</directory><trans_type>Normal</trans_type><size_rowset>100</size_rowset><parameters/></info>
+  <connection>
+    <name>Vertica QA loader</name><server>vertica-hostname</server><type>VERTICA5</type><access>Native</access>
+    <database>vmart</database><port>5433</port><username>qa_loader</username><password>qa_ephemeral</password>
+    <attributes><attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute><attribute><code>USE_POOLING</code><attribute>N</attribute></attribute></attributes>
+  </connection>
+  <order>
+    <hop><from>SP-7583 slow rows</from><to>SP-7583 bulk load</to><enabled>Y</enabled></hop>
+  </order>
+  <step>
+    <name>SP-7583 slow rows</name><type>TextFileInput</type><distribute>Y</distribute><copies>1</copies>
+    <accept_filenames>N</accept_filenames><passing_through_fields>N</passing_through_fields><separator>,</separator>
+    <enclosure>"</enclosure><header>N</header><footer>N</footer><noempty>Y</noempty><format>Unix</format><encoding>UTF-8</encoding>
+    <file><name>@@FIFO@@</name><filemask/><exclude_filemask/><file_required>Y</file_required><include_subfolders>N</include_subfolders><type>CSV</type><compression>None</compression></file>
+    <fields>
+      <field><name>source_id</name><type>Integer</type><position>-1</position><length>15</length><precision>0</precision><trim_type>none</trim_type><repeat>N</repeat></field>
+      <field><name>source_payload</name><type>String</type><position>-1</position><length>512</length><precision>-1</precision><trim_type>none</trim_type><repeat>N</repeat></field>
+    </fields>
+  </step>
+  <step>
+    <name>SP-7583 bulk load</name><type>VerticaBulkLoader</type><distribute>Y</distribute><copies>1</copies>
+    <connection>Vertica QA loader</connection><schema>public</schema><table>qa_target</table><specify_fields>Y</specify_fields>
+    <fields><field><column_name>payload</column_name><stream_name>source_payload</stream_name></field><field><column_name>id</column_name><stream_name>source_id</stream_name></field></fields>
+    <exceptions_filename/><rejected_data_filename/><abort_on_error>Y</abort_on_error><direct>Y</direct><stream_name>SP-7583</stream_name>
+  </step>
+  <step_error_handling/>
+</transformation>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SP-7583: Java renders every placeholder before docker cp. Booleans are literal Y/N at XML load time. -->
+<transformation>
+  <info>
+    <name>SP-7583 real native COPY lifecycle</name>
+    <description>SP-7583: real Pan EOF, mapping, UTF-8 and COPY SQL-failure regressions. Java checks exact exit, SQL provenance, committed data and closed sessions.</description>
+    <directory>/</directory>
+    <trans_type>Normal</trans_type>
+    <size_rowset>100</size_rowset>
+    <parameters/>
+  </info>
+  <notepads>
+    <notepad>
+      <note>SP-7583: 100000 rows exceed pipe capacity. Healthy EOF must drain and commit; early permission/CHECK failures must unblock the producer and exit 1 without a watchdog. Explicit mapping reverses COPY column order and maps different stream names. Non-direct/default mapping uses stream positions. The static qa_loader connection has SELECT for metadata even when INSERT is revoked.</note>
+      <xloc>40</xloc><yloc>160</yloc><width>800</width><heigth>140</heigth>
+    </notepad>
+  </notepads>
+  <connection>
+    <name>Vertica QA loader</name>
+    <server>vertica-hostname</server>
+    <type>VERTICA5</type>
+    <access>Native</access>
+    <database>vmart</database>
+    <port>5433</port>
+    <username>qa_loader</username>
+    <password>qa_ephemeral</password>
+    <attributes>
+      <attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute>
+      <attribute><code>USE_POOLING</code><attribute>@@POOLING@@</attribute></attribute>
+    </attributes>
+  </connection>
+  <order>
+    <hop><from>SP-7583 generate rows</from><to>SP-7583 bulk load</to><enabled>Y</enabled></hop>
+  </order>
+  <step>
+    <name>SP-7583 generate rows</name>
+    <type>RowGenerator</type>
+    <description>SP-7583: deterministic native integer and UTF-8 fields; zero limit validates empty input.</description>
+    <distribute>Y</distribute><copies>1</copies>
+    <fields>
+      <field><name>source_id</name><type>Integer</type><length>15</length><precision>0</precision><nullif>7</nullif></field>
+      <field><name>source_payload</name><type>String</type><length>512</length><precision>-1</precision><nullif>@@PAYLOAD@@</nullif></field>
+    </fields>
+    <limit>@@ROWS@@</limit>
+    <GUI><xloc>100</xloc><yloc>80</yloc><draw>Y</draw></GUI>
+  </step>
+  <step>
+    <name>SP-7583 bulk load</name>
+    <type>VerticaBulkLoader</type>
+    <description>SP-7583: installed plugin and actual native JDBC COPY, not Table Output or a mocked driver.</description>
+    <distribute>Y</distribute><copies>@@COPIES@@</copies>
+    <connection>Vertica QA loader</connection>
+    <schema>public</schema><table>qa_target</table>
+    <specify_fields>@@MAPPING@@</specify_fields>
+    <fields>
+      <field><column_name>payload</column_name><stream_name>source_payload</stream_name></field>
+      <field><column_name>id</column_name><stream_name>source_id</stream_name></field>
+    </fields>
+    <exceptions_filename/>
+    <rejected_data_filename/>
+    <abort_on_error>Y</abort_on_error>
+    <direct>@@DIRECT@@</direct>
+    <stream_name>SP-7583</stream_name>
+    <GUI><xloc>420</xloc><yloc>80</yloc><draw>Y</draw></GUI>
+  </step>
+  <step_error_handling/>
+</transformation>
