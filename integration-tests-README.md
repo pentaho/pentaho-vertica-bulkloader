@@ -16,6 +16,12 @@ own user and tables on a private Docker network. Never point them at a shared
 database. The default plugin source is `bundled`; `local` replaces the plugin in
 the selected distribution with the assembly built from this checkout.
 
+Vertica startup waits up to 5 minutes for an actual `SELECT 1` through `vsql`.
+The derived database image removes group and other write permissions from
+sudo configuration and plugin files and sets `/etc/sudoers` ownership to
+root before startup. This mitigates observed modes and ownership but does not
+establish why they occurred on a runner.
+
 ## Prerequisites
 
 - Java 11 and Maven on the host; Bash, `curl`, `jq` and SHA-1/SHA-256 utilities.
@@ -173,6 +179,18 @@ identifies the candidate and checksum when a candidate is used,
 and `vertica.log` contains Vertica container output. Each suite's `setup/`
 contains setup SQL output, `jdbc-provenance-<id>.log` and
 `generated-directories-<id>.log` with their command and status files.
+CI also records `vertica-startup.txt` with the derived image ID, container health,
+and the sudo file modes and ownership before and after the image workaround when
+available. Post-repair values are from the image if the container is unavailable.
+
+A launcher watchdog timeout can happen before the transformation starts. Inspect
+the thread dump in the Pan or Kitchen log: a TLS handshake in ELM license
+verification during database initialization indicates a licensing dependency
+stall, not evidence that the Vertica COPY step hung. Investigate DNS, routing,
+proxy and TLS connectivity from the affected PDI container and runner with the
+licensing and infrastructure teams; one successful run does not rule out an
+intermittent failure. Do not include license configuration, credentials or
+service URLs in shared diagnostics.
 
 CI does not upload the rendered transformation or job files. Because SQL is
 redacted in recorded commands, a `vsql` output alone may not identify which

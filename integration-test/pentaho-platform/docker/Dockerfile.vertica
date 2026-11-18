@@ -1,4 +1,5 @@
 FROM ${vertica.it.vertica-image}
 USER root
-RUN chmod go-w /etc/sudo.conf /usr/libexec/sudo/sudoers.so
+RUN stat -c '%a %u:%g %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers > /tmp/vertica-it-base-sudo-modes.txt && chown root:root /etc/sudoers && chmod go-w /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers
 USER dbadmin
+HEALTHCHECK --interval=5s --timeout=10s --start-period=300s --retries=3 CMD /opt/vertica/bin/vsql -X -q -w -U dbadmin -d vmart -p 5433 -v ON_ERROR_STOP=1 -c 'SELECT 1' > /dev/null 2>&1 || exit 1
