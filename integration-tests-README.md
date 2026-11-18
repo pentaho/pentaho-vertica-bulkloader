@@ -18,7 +18,7 @@ the Java suite creates its own test user and tables. Do not point the suite at a
 shared database. Standalone Maven defaults to the bundled plugin; CI defaults to
 the plugin built from the checkout.
 
-Vertica startup waits up to 10 minutes for an actual `SELECT 1` through `vsql`.
+Vertica startup waits up to 5 minutes for an actual `SELECT 1` through `vsql`.
 The derived database image also removes group and other write permissions from
 two sudo files before startup; this mitigates observed insecure modes but does
 not establish why those modes occurred on a runner.
