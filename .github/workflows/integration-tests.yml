@@ -254,8 +254,13 @@ jobs:
             if docker image inspect "$image" >/dev/null 2>&1; then
               docker run --rm --network none --entrypoint cat "$image" /tmp/vertica-it-base-sudo-modes.txt || true
             fi
-            echo 'Runtime sudo modes:'
-            docker exec "$container" stat -c '%a %U:%G %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so || true
+            if docker container inspect "$container" >/dev/null 2>&1; then
+              echo 'Runtime sudo modes:'
+              docker exec "$container" stat -c '%a %u:%g %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers || true
+            elif docker image inspect "$image" >/dev/null 2>&1; then
+              echo 'Repaired image sudo modes (container unavailable):'
+              docker run --rm --network none --entrypoint stat "$image" -c '%a %u:%g %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers || true
+            fi
           } > integration-test/pentaho-platform/target/evidence/vertica-startup.txt 2>&1
 
       - name: Stop only this run's Fabric8 resources

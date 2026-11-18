@@ -19,9 +19,10 @@ shared database. Standalone Maven defaults to the bundled plugin; CI defaults to
 the plugin built from the checkout.
 
 Vertica startup waits up to 5 minutes for an actual `SELECT 1` through `vsql`.
-The derived database image also removes group and other write permissions from
-two sudo files before startup; this mitigates observed insecure modes but does
-not establish why those modes occurred on a runner.
+The derived database image removes group and other write permissions from
+sudo configuration and plugin files and sets `/etc/sudoers` ownership to
+root before startup. This mitigates observed modes and ownership but does not
+establish why they occurred on a runner.
 
 ## Prerequisites
 
@@ -204,7 +205,8 @@ and `vertica.log` contains Vertica container output. Each suite's `setup/` conta
 `jdbc-provenance-<id>.log` and `generated-directories-<id>.log` with their
 command and status files.
 CI also records `vertica-startup.txt` with the derived image ID, container health,
-and the sudo file modes before and after the image workaround when available.
+and the sudo file modes and ownership before and after the image workaround when
+available. Post-repair values are from the image if the container is unavailable.
 
 A launcher watchdog timeout can happen before the transformation starts. Inspect
 the thread dump in the Pan or Kitchen log: a TLS handshake in ELM license
