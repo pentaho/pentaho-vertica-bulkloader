@@ -46,6 +46,7 @@ class VerticaBulkLoaderIT {
   private static final String PAYLOAD = "SP-7583 café 日本語 | quote' \\. & <xml> \"quoted\"";
   private static final Duration SQL_TIMEOUT = Duration.ofSeconds( 30 );
   private static final Duration HOST_TIMEOUT = Duration.ofSeconds( 150 );
+  private static final Duration SLOW_LAUNCHER_DIAGNOSTIC_DELAY = Duration.ofSeconds( 105 );
   private static final String WATCHDOG = "setsid timeout --signal=QUIT --kill-after=10s 120s \"$@\" & "
     + "group=$!; wait \"$group\"; result=$?; "
     + "if [ \"$result\" -eq 124 ] || [ \"$result\" -eq 137 ]; then "
@@ -232,12 +233,14 @@ class VerticaBulkLoaderIT {
           + "trap 'kill \"$writer\" 2>/dev/null || true; rm -f -- \"$fifo\"' EXIT; "
           + "bash \"$launcher\" \"-file=$fixture\" -level=Detailed; result=$?; "
           + "if [ \"$result\" -ne 0 ]; then exit \"$result\"; fi; wait \"$writer\" || exit 2";
-        result = DockerUtils.run( invocation, "pan", HOST_TIMEOUT,
+        result = DockerUtils.run( invocation, "pan", HOST_TIMEOUT, SLOW_LAUNCHER_DIAGNOSTIC_DELAY,
+          () -> collectLiveCopyState( invocation ),
           "exec", "--env", "TZ=UTC", "--workdir", PDI_ROOT, pdiContainer,
           "bash", "-c", WATCHDOG, "--", "bash", "-c", script, "--",
           fifo, PDI_ROOT + "/pan.sh", fixture, Integer.toString( rows ), payload );
       } else {
         result = DockerUtils.run( invocation, kitchen ? "kitchen" : "pan", HOST_TIMEOUT,
+          SLOW_LAUNCHER_DIAGNOSTIC_DELAY, () -> collectLiveCopyState( invocation ),
           "exec", "--env", "TZ=UTC", "--workdir", PDI_ROOT, pdiContainer,
           "bash", "-c", WATCHDOG, "--", "bash",
           PDI_ROOT + ( kitchen ? "/kitchen.sh" : "/pan.sh" ), "-file=" + fixture, "-level=Detailed" );
@@ -286,6 +289,32 @@ class VerticaBulkLoaderIT {
       "-v", "ON_ERROR_STOP=1", "-c", statement );
     requireSuccess( result );
     return result.output().strip();
+  }
+
+  /** Captures bounded server-side state before the launcher watchdog terminates a slow process. */
+  private void collectLiveCopyState( Path destination ) {
+    String[] labels = { "live-copy-locks", "live-copy-requests" };
+    String[] queries = {
+      "SELECT node_names, object_name, transaction_id, lock_mode, lock_scope, request_timestamp, grant_timestamp "
+        + "FROM v_monitor.locks WHERE object_name ILIKE '%qa_target%'",
+      "SELECT node_name, session_id, request_id, transaction_id, statement_id, request_type, "
+        + "start_timestamp, request_duration_ms, is_executing FROM v_monitor.query_requests "
+        + "WHERE user_name='qa_loader' AND is_executing=true"
+    };
+    for ( int index = 0; index < labels.length; index++ ) {
+      try {
+        DockerUtils.exec( destination, labels[ index ], Duration.ofSeconds( 4 ), verticaContainer,
+          "/opt/vertica/bin/vsql", "-X", "-w", "-U", "dbadmin", "-d", "vmart", "-p", "5433",
+          "-v", "ON_ERROR_STOP=1", "-c", queries[ index ] );
+      } catch ( IOException e ) {
+        recordDiagnosticFailure( destination, labels[ index ] + "-error-", e );
+      } catch ( InterruptedException e ) {
+        Thread.currentThread().interrupt();
+        return;
+      } catch ( RuntimeException e ) {
+        LOGGER.log( System.Logger.Level.WARNING, "Could not capture live COPY state in " + destination, e );
+      }
+    }
   }
 
   private void collectState( Path destination ) {
