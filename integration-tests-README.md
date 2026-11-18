@@ -18,6 +18,11 @@ the Java suite creates its own test user and tables. Do not point the suite at a
 shared database. Standalone Maven defaults to the bundled plugin; CI defaults to
 the plugin built from the checkout.
 
+Vertica startup waits up to 10 minutes for an actual `SELECT 1` through `vsql`.
+The derived database image also removes group and other write permissions from
+two sudo files before startup; this mitigates observed insecure modes but does
+not establish why those modes occurred on a runner.
+
 ## Prerequisites
 
 - Java 17 and Maven on the host for the 11.1 checkout; use the JDK required by
@@ -198,6 +203,17 @@ identifies the candidate and checksum when a candidate is used,
 and `vertica.log` contains Vertica container output. Each suite's `setup/` contains setup SQL output,
 `jdbc-provenance-<id>.log` and `generated-directories-<id>.log` with their
 command and status files.
+CI also records `vertica-startup.txt` with the derived image ID, container health,
+and the sudo file modes before and after the image workaround when available.
+
+A launcher watchdog timeout can happen before the transformation starts. Inspect
+the thread dump in the Pan or Kitchen log: a TLS handshake in ELM license
+verification during database initialization indicates a licensing dependency
+stall, not evidence that the Vertica COPY step hung. Investigate DNS, routing,
+proxy and TLS connectivity from the affected PDI container and runner with the
+licensing and infrastructure teams; one successful run does not rule out an
+intermittent failure. Do not include license configuration, credentials or
+service URLs in shared diagnostics.
 
 CI does not upload the rendered transformation or job files. Because SQL is
 redacted in recorded commands, a `vsql` output alone may not identify which

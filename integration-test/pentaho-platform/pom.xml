@@ -69,7 +69,7 @@ Run: ${vertica.it.run-id}</echo>
               <run><containerNamePattern>vertica-it-db-${vertica.it.run-id}</containerNamePattern><platform>linux/amd64</platform>
                 <env><VERTICA_DB_NAME>vmart</VERTICA_DB_NAME></env>
                 <network><mode>custom</mode><name>vertica-it-${vertica.it.run-id}</name><alias>vertica-hostname</alias></network>
-                <wait><log>Vertica is now running</log><time>600000</time></wait>
+                <wait><healthy>true</healthy><time>600000</time></wait>
                 <log><file>${vertica.it.evidence-dir}/vertica.log</file></log>
               </run>
             </image>
