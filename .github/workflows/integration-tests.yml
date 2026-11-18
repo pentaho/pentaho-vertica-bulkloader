@@ -225,6 +225,30 @@ jobs:
             -Dmaven.repo.local=/m2_local_cache/ -Dmaven.test.failure.ignore=false \
             -f integration-test/pom.xml verify -DrunIntegrationTests "${args[@]}"
 
+      - name: Record Vertica startup diagnostics
+        if: always() && steps.integration-tests.outcome != 'skipped'
+        run: |
+          mkdir -p integration-test/pentaho-platform/target/evidence
+          {
+            image="vertica-bulkloader-it-db:$VERTICA_IT_RUN_ID"
+            container="vertica-it-db-$VERTICA_IT_RUN_ID"
+            echo 'Derived image ID:'
+            docker image inspect --format '{{.Id}}' "$image" || true
+            echo 'Container state and health:'
+            docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" || true
+            echo 'Base image sudo modes:'
+            if docker image inspect "$image" >/dev/null 2>&1; then
+              docker run --rm --network none --entrypoint cat "$image" /tmp/vertica-it-base-sudo-modes.txt || true
+            fi
+            if docker container inspect "$container" >/dev/null 2>&1; then
+              echo 'Runtime sudo modes:'
+              docker exec "$container" stat -c '%a %u:%g %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers || true
+            elif docker image inspect "$image" >/dev/null 2>&1; then
+              echo 'Repaired image sudo modes (container unavailable):'
+              docker run --rm --network none --entrypoint stat "$image" -c '%a %u:%g %n' /etc/sudo.conf /usr/libexec/sudo/sudoers.so /etc/sudoers || true
+            fi
+          } > integration-test/pentaho-platform/target/evidence/vertica-startup.txt 2>&1
+
       - name: Stop only this run's Fabric8 resources
         if: always() && steps.integration-tests.outcome != 'skipped' && steps.maven-settings.outcome == 'success'
         env:
