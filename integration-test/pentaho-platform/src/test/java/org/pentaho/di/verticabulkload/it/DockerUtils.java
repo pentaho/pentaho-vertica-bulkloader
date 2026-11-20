@@ -59,6 +59,12 @@ final class DockerUtils {
 
   static ExecResult run( Path evidence, String label, Duration timeout, String... arguments )
     throws IOException, InterruptedException {
+    return run( evidence, label, timeout, null, null, arguments );
+  }
+
+  /** Runs a Docker command and invokes an optional diagnostic while a slow command is still active. */
+  static ExecResult run( Path evidence, String label, Duration timeout, Duration diagnosticDelay,
+                         Runnable diagnostic, String... arguments ) throws IOException, InterruptedException {
     Files.createDirectories( evidence );
     Path log = Files.createTempFile( evidence, label + "-", ".log" );
     List<String> command = new ArrayList<>();
@@ -71,7 +77,7 @@ final class DockerUtils {
     try {
       // These commands never need interactive input (in particular, vsql uses --no-password).
       process.getOutputStream().close();
-      completed = process.waitFor( timeout.toMillis(), TimeUnit.MILLISECONDS );
+      completed = waitFor( process, timeout, diagnosticDelay, diagnostic );
       if ( !completed ) {
         process.destroyForcibly();
         process.waitFor( 5, TimeUnit.SECONDS );
@@ -86,6 +92,21 @@ final class DockerUtils {
       Files.writeString( log.resolveSibling( log.getFileName() + ".status" ),
         completed ? "exit=" + process.exitValue() : "HOST_TIMEOUT_OR_INTERRUPTION", StandardCharsets.UTF_8 );
     }
+  }
+
+  /** Waits for the process within the original timeout, taking one optional slow-command snapshot. */
+  static boolean waitFor( Process process, Duration timeout, Duration diagnosticDelay, Runnable diagnostic )
+    throws InterruptedException {
+    if ( diagnostic == null || diagnosticDelay == null || diagnosticDelay.compareTo( timeout ) >= 0 ) {
+      return process.waitFor( timeout.toNanos(), TimeUnit.NANOSECONDS );
+    }
+    long started = System.nanoTime();
+    if ( process.waitFor( diagnosticDelay.toNanos(), TimeUnit.NANOSECONDS ) ) {
+      return true;
+    }
+    diagnostic.run();
+    long remaining = timeout.toNanos() - ( System.nanoTime() - started );
+    return process.waitFor( Math.max( 0, remaining ), TimeUnit.NANOSECONDS );
   }
 
   static List<String> evidenceCommand( List<String> command ) {
