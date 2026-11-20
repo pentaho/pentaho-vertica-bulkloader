@@ -186,6 +186,7 @@ do not indicate execution order. A test may have several `pan-<id>` or
 | `<name>.log.status` | Command exit status, or `HOST_TIMEOUT_OR_INTERRUPTION`. |
 | `vsql-<id>.log` | Database setup or query output, including row and session counts. |
 | `loader-sessions-<id>.log` | Snapshot of Vertica sessions for the test loader user. |
+| `live-copy-locks-<id>.log`, `live-copy-requests-<id>.log` | Bounded snapshots of test-table locks and active loader requests, taken after 105 seconds while the launcher is still running. |
 | `pdi-processes-<id>.log` | Snapshot of processes in the PDI container. |
 | `docker-cp-<id>.log` | Output from copying a rendered fixture into the PDI container. |
 
