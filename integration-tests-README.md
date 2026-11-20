@@ -7,7 +7,7 @@ SP-7772, the 11.0 backport of PDI-20802, with real Pan/Kitchen, native Vertica
 COPY and independent `vsql` checks.
 Fabric8 builds a PDI image and starts disposable PDI and Vertica containers; JUnit 5
 tests run through Maven Failsafe. A separate lifecycle suite tests real multi-copy,
-slow-input, transformation Abort and pooled-recovery paths. The design follows the Big Data and OpenLineage
+slow-input, transformation Abort, shared transactions and pooled-recovery paths. The design follows the Big Data and OpenLineage
 integration-test patterns. It does not modify the existing samples or require
 Python or Docker Compose. See the [QA summary](integration-test/SP-7772-QA-summary.md)
 for results, known failures, coverage and outstanding automation.
@@ -142,9 +142,11 @@ checkout files. Remote `k8s` validation results and limitations are in the
 
 The original seven serial tests cover healthy large-stream EOF, positional non-direct mapping,
 empty input, permission and CHECK failures, Kitchen's error branch, and recovery
-after repeated failures. The separate five-test lifecycle suite adds multi-copy
+after repeated failures. The separate seven-test lifecycle suite adds multi-copy
 EOF and failure, slow finite input, Abort during server-confirmed active COPY,
-and pooled failure/recovery in one Kitchen JVM. Successful launchers must exit 0.
+shared-connection commit and rollback, and pooled failure/recovery in one Kitchen JVM.
+The abort trigger is released only after an active test COPY is observed, and a
+separate timestamp check confirms the COPY was still active when Abort fired. Successful launchers must exit 0.
 Expected SQL failures must exit naturally with code 1 and the loader's SQL error
 plus the expected server detail; the intentional Abort also exits with code 1.
 Unexpected cleanup or uncaught missing-class errors fail the test;

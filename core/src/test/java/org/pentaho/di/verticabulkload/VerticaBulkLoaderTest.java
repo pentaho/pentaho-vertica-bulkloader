@@ -491,6 +491,7 @@ public class VerticaBulkLoaderTest {
     assertTrue( loader.isStopped() );
   }
 
+  /** Successful COPY completion must precede commit and disconnect. */
   @Test( timeout = 3000 )
   public void shouldNotWaitIndefinitelyWhenWorkerIgnoresInterrupt() throws Exception {
     doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
@@ -559,11 +560,34 @@ public class VerticaBulkLoaderTest {
       disposeThread.join( 1000 );
       assertFalse( disposeThread.isAlive() );
       assertTrue( disconnectCalled.await( 1, TimeUnit.SECONDS ) );
+      InOrder cleanupOrder = inOrder( database );
+      cleanupOrder.verify( database ).commit();
+      cleanupOrder.verify( database ).disconnect();
     } finally {
       releaseWorker.countDown();
       successfulWorker.interrupt();
       successfulWorker.join( 1000 );
     }
+  }
+
+  /** A failed completion commit must report an error, roll back and disconnect. */
+  @Test
+  public void shouldRollbackAndDisconnectWhenCommitFails() throws Exception {
+    Database database = mock( Database.class );
+    Connection connection = mock( Connection.class );
+    when( database.getConnection() ).thenReturn( connection );
+    doThrow( new KettleDatabaseException( "Commit failed" ) ).when( database ).commit();
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    loader.setStopped( false );
+
+    loader.dispose( loaderMeta, loaderData );
+
+    assertTrue( loader.getErrors() > 0 );
+    InOrder cleanupOrder = inOrder( database );
+    cleanupOrder.verify( database ).commit();
+    cleanupOrder.verify( database ).rollback();
+    cleanupOrder.verify( database ).disconnect();
   }
 
   @Test
