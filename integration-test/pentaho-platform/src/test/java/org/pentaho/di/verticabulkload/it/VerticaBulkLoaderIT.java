@@ -182,23 +182,34 @@ class VerticaBulkLoaderIT {
 
   String runPdi( int rows, String payload, boolean direct, boolean mapping, boolean kitchen,
                  String expectedSqlError, int copies ) throws Exception {
-    return runPdi( rows, payload, direct, mapping, kitchen, expectedSqlError, copies, "load.ktr", false, false );
+    return runPdi( rows, payload, direct, mapping, kitchen, expectedSqlError, copies, "load.ktr", false, false, false );
   }
 
   String runPdiAbort( int rows, String payload ) throws Exception {
-    return runPdi( rows, payload, true, true, false, null, 1, "abort.ktr", true, false );
+    return runPdi( rows, payload, true, true, false, null, 1, "abort.ktr", true, false, false );
+  }
+
+  /** Runs a healthy load using a transformation-owned shared connection. */
+  String runPdiSharedConnection( int rows, String payload ) throws Exception {
+    return runPdi( rows, payload, true, true, false, null, 1, "load.ktr", false, false, true );
+  }
+
+  /** Runs the active-COPY abort using a transformation-owned shared connection. */
+  String runPdiAbortSharedConnection( int rows, String payload ) throws Exception {
+    return runPdi( rows, payload, true, true, false, null, 1, "abort.ktr", true, false, true );
   }
 
   String runPdiSlowInput( int rows, String payload ) throws Exception {
-    return runPdi( rows, payload, true, true, false, null, 1, "slow-input.ktr", false, false );
+    return runPdi( rows, payload, true, true, false, null, 1, "slow-input.ktr", false, false, false );
   }
 
   String runPdiPooledRecovery( int rows, String payload ) throws Exception {
-    return runPdi( rows, payload, true, true, true, null, 1, "load.ktr", false, true );
+    return runPdi( rows, payload, true, true, true, null, 1, "load.ktr", false, true, false );
   }
 
   private String runPdi( int rows, String payload, boolean direct, boolean mapping, boolean kitchen,
-                         String expectedSqlError, int copies, String resource, boolean abort, boolean pooledRecovery )
+                         String expectedSqlError, int copies, String resource, boolean abort, boolean pooledRecovery,
+                         boolean sharedConnection )
     throws Exception {
     Path invocation = Files.createTempDirectory( evidence, kitchen ? "kitchen-" : "pan-" );
     String name = invocation.getFileName().toString();
@@ -210,6 +221,7 @@ class VerticaBulkLoaderIT {
     tokens.put( "MAPPING", mapping ? "Y" : "N" );
     tokens.put( "COPIES", Integer.toString( copies ) );
     tokens.put( "POOLING", pooledRecovery ? "Y" : "N" );
+    tokens.put( "UNIQUE_CONNECTIONS", sharedConnection ? "Y" : "N" );
     String fifo = generatedTransformations + "/" + name + ".fifo";
     tokens.put( "FIFO", fifo );
     Path input = render( "transformations/vertica_bulk_loader/" + resource,
@@ -225,7 +237,9 @@ class VerticaBulkLoaderIT {
         DockerUtils.copyToContainer( invocation, pdiContainer, job, fixture );
       }
       DockerUtils.ExecResult result;
-      if ( "slow-input.ktr".equals( resource ) ) {
+      if ( abort ) {
+        result = runAbortLauncher( invocation, fifo, fixture );
+      } else if ( "slow-input.ktr".equals( resource ) ) {
         String script = "fifo=$1; launcher=$2; fixture=$3; rows=$4; payload=$5; "
           + "mkfifo \"$fifo\" || exit 2; "
           + "(for ((row=0; row<rows; row++)); do printf '%s,%s\\n' 7 \"$payload\"; "
@@ -289,6 +303,47 @@ class VerticaBulkLoaderIT {
       "-v", "ON_ERROR_STOP=1", "-c", statement );
     requireSuccess( result );
     return result.output().strip();
+  }
+
+  /** Launches the abort transformation with a named pipe for its server-confirmed trigger. */
+  private DockerUtils.ExecResult runAbortLauncher( Path invocation, String fifo, String fixture ) throws Exception {
+    requireSuccess( DockerUtils.exec( invocation, "abort-fifo", SQL_TIMEOUT, pdiContainer, "mkfifo", fifo ) );
+    try {
+      return DockerUtils.run( invocation, "pan", HOST_TIMEOUT, Duration.ofSeconds( 1 ),
+        () -> releaseAbortWhenCopyActive( invocation, fifo ),
+        "exec", "--env", "TZ=UTC", "--workdir", PDI_ROOT, pdiContainer,
+        "bash", "-c", WATCHDOG, "--", "bash", PDI_ROOT + "/pan.sh", "-file=" + fixture, "-level=Detailed" );
+    } finally {
+      DockerUtils.exec( invocation, "abort-fifo-cleanup", SQL_TIMEOUT, pdiContainer, "rm", "-f", fifo );
+    }
+  }
+
+  /** Releases the abort trigger only after Vertica reports an active COPY, or leaves the watchdog to fail. */
+  private void releaseAbortWhenCopyActive( Path destination, String fifo ) {
+    long deadline = System.nanoTime() + Duration.ofSeconds( 90 ).toNanos();
+    try {
+      while ( System.nanoTime() < deadline ) {
+        DockerUtils.ExecResult activeCopy = DockerUtils.exec( destination, "abort-active-copy",
+          Duration.ofSeconds( 4 ), verticaContainer, "/opt/vertica/bin/vsql", "-X", "-q", "-A", "-t", "-w",
+          "-U", "dbadmin", "-d", "vmart", "-p", "5433", "-v", "ON_ERROR_STOP=1", "-c",
+          "SELECT COUNT(*) FROM v_monitor.query_requests WHERE user_name='qa_loader' "
+            + "AND request ILIKE '%COPY%qa_target%' AND is_executing=true" );
+        if ( activeCopy.exitCode() == 0 && activeCopy.output().strip().matches( "[1-9][0-9]*" ) ) {
+          DockerUtils.ExecResult signal = DockerUtils.exec( destination, "abort-signal", Duration.ofSeconds( 5 ),
+            pdiContainer, "timeout", "4s", "bash", "-c", "printf 'trigger\\ntrigger\\n' > \"$1\"", "--", fifo );
+          if ( signal.exitCode() == 0 ) {
+            return;
+          }
+          break;
+        }
+        Thread.sleep( 1000 );
+      }
+      collectLiveCopyState( destination );
+    } catch ( IOException e ) {
+      recordDiagnosticFailure( destination, "abort-trigger-error-", e );
+    } catch ( InterruptedException e ) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   /** Captures bounded server-side state before the launcher watchdog terminates a slow process. */

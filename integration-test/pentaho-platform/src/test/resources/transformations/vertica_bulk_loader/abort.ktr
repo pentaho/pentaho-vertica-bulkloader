@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <transformation>
-  <info><name>SP-7583 active COPY abort</name><directory>/</directory><trans_type>Normal</trans_type><size_rowset>100</size_rowset><parameters/></info>
+  <info><name>SP-7583 active COPY abort</name><directory>/</directory><trans_type>Normal</trans_type><unique_connections>@@UNIQUE_CONNECTIONS@@</unique_connections><size_rowset>100</size_rowset><parameters/></info>
   <connection>
     <name>Vertica QA loader</name><server>vertica-hostname</server><type>VERTICA5</type><access>Native</access>
     <database>vmart</database><port>5433</port><username>qa_loader</username><password>qa_ephemeral</password>
@@ -8,7 +8,7 @@
   </connection>
   <order>
     <hop><from>SP-7583 generate rows</from><to>SP-7583 bulk load</to><enabled>Y</enabled></hop>
-    <hop><from>SP-7583 bulk load</from><to>SP-7583 abort</to><enabled>Y</enabled></hop>
+    <hop><from>SP-7583 abort trigger</from><to>SP-7583 abort</to><enabled>Y</enabled></hop>
   </order>
   <step>
     <name>SP-7583 generate rows</name><type>RowGenerator</type><distribute>Y</distribute><copies>1</copies>
@@ -25,8 +25,15 @@
     <exceptions_filename/><rejected_data_filename/><abort_on_error>Y</abort_on_error><direct>Y</direct><stream_name>SP-7583</stream_name>
   </step>
   <step>
+    <name>SP-7583 abort trigger</name><type>TextFileInput</type><distribute>Y</distribute><copies>1</copies>
+    <accept_filenames>N</accept_filenames><passing_through_fields>N</passing_through_fields><separator>,</separator>
+    <enclosure>"</enclosure><header>N</header><footer>N</footer><noempty>Y</noempty><format>Unix</format><encoding>UTF-8</encoding>
+    <file><name>@@FIFO@@</name><filemask/><exclude_filemask/><file_required>Y</file_required><include_subfolders>N</include_subfolders><type>CSV</type><compression>None</compression></file>
+    <fields><field><name>trigger</name><type>String</type><position>-1</position><length>16</length><precision>-1</precision><trim_type>none</trim_type><repeat>N</repeat></field></fields>
+  </step>
+  <step>
     <name>SP-7583 abort</name><type>Abort</type><distribute>Y</distribute><copies>1</copies>
-    <row_threshold>5000</row_threshold><message>SP-7583 intentional abort during COPY</message><always_log_rows>N</always_log_rows>
+    <row_threshold>1</row_threshold><message>SP-7583 intentional abort during COPY</message><always_log_rows>N</always_log_rows>
   </step>
   <step_error_handling/>
 </transformation>

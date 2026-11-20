@@ -6,7 +6,7 @@ The standalone [integration-test Maven reactor](integration-test/pom.xml) tests
 real Pan/Kitchen, native Vertica COPY and independent `vsql` database checks.
 Fabric8 starts disposable PDI and Vertica containers; JUnit 5 tests run through
 Maven Failsafe. The suites cover failure propagation, normal EOF, concurrent
-copies, slow input, transformation Abort and pooled connection recovery.
+copies, slow input, transformation Abort, shared transactions and pooled connection recovery.
 See the [QA summary](integration-test/SP-7583-QA-summary.md) for measured results
 and outstanding acceptance coverage.
 
@@ -120,9 +120,11 @@ and limitations are in the [QA summary](integration-test/SP-7583-QA-summary.md).
 
 The seven serial tests cover healthy large-stream EOF, positional non-direct
 mapping, empty input, permission and CHECK failures, Kitchen's error branch, and
-recovery after repeated failures. The separate five-test lifecycle suite adds
+recovery after repeated failures. The separate seven-test lifecycle suite adds
 multi-copy EOF and failure, slow finite input, Abort during server-confirmed
-active COPY, and pooled failure/recovery in one Kitchen JVM. Successful launchers
+active COPY, shared-connection commit and rollback, and pooled failure/recovery in one Kitchen JVM.
+The abort trigger is released only after an active test COPY is observed, and a
+separate timestamp check confirms the COPY was still active when Abort fired. Successful launchers
 must exit 0. Expected SQL failures must exit naturally with code 1 and the loader's
 SQL error plus the expected server detail; the intentional Abort also exits with
 code 1. Unexpected cleanup or uncaught

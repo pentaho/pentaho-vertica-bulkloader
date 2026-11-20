@@ -3,6 +3,12 @@
 # pentaho-vertica-bulkloader #
 This is a plugin for performing bulk data loads into a Vertica Analytic Database using a COPY FROM STDIN statement through JDBC
 
+COPY uses `NO COMMIT`. With a step-owned connection, the step commits after COPY
+finishes successfully and rolls back on forced shutdown. With transformation-owned
+shared connections, the transformation controls the transaction. This changes
+the previous implicit-commit behavior of COPY, including its effect on other
+work already performed on the same connection.
+
 #### TODO/LIMITATIONS:
 
 No data escaping - If there is a \. the load will silently be truncated.

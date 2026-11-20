@@ -92,10 +92,16 @@ class VerticaBulkLoaderLifecycleIT {
     VerticaBulkLoaderIT.assertNoCleanupError( output );
   }
 
+  /** An intentional abort during a server-confirmed active COPY must roll back and close the loader session. */
   @Test
   void transformationAbortDuringCopy() throws Exception {
     String startedAt = harness.sql( "SELECT NOW()::VARCHAR" );
-    String output = harness.runPdiAbort( 100_000, PAYLOAD );
+    String output = harness.runPdiAbort( 100_000_000, PAYLOAD );
+    assertAbortDuringCopy( startedAt, output );
+  }
+
+  /** Verifies that an abort occurred during server-side COPY and left no committed rows or sessions. */
+  private void assertAbortDuringCopy( String startedAt, String output ) throws Exception {
     assertThat( output ).containsPattern( "(?m)^.*SP-7583 bulk load\\.0 - Finished processing "
       + "\\(I=\\d+, O=[1-9]\\d*, R=[1-9]\\d*, W=[1-9]\\d*, U=\\d+, E=\\d+\\)" );
     Matcher abortLog = Pattern.compile( "(?m)^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3})"
@@ -109,5 +115,20 @@ class VerticaBulkLoaderLifecycleIT {
       .as( "Vertica must be executing the COPY request when Abort fires" ).isNotEqualTo( "0" );
     assertThat( harness.sql( "SELECT COUNT(*) FROM public.qa_target" ) ).isEqualTo( "0" );
     VerticaBulkLoaderIT.assertNoCleanupError( output );
+  }
+
+  /** A healthy shared-connection transformation must commit all COPY rows. */
+  @Test
+  void sharedConnectionCommitsAtEof() throws Exception {
+    harness.runPdiSharedConnection( 100_000, PAYLOAD );
+    harness.assertRows( 100_000, PAYLOAD );
+  }
+
+  /** An active COPY aborted on a shared connection must leave no committed rows. */
+  @Test
+  void sharedConnectionRollsBackOnAbort() throws Exception {
+    String startedAt = harness.sql( "SELECT NOW()::VARCHAR" );
+    String output = harness.runPdiAbortSharedConnection( 100_000_000, PAYLOAD );
+    assertAbortDuringCopy( startedAt, output );
   }
 }
