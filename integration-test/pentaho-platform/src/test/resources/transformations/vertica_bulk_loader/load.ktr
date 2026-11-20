@@ -6,6 +6,7 @@
     <description>PDI-20802: real Pan EOF, mapping, UTF-8 and COPY SQL-failure regressions. Java checks exact exit, SQL provenance, committed data and closed sessions.</description>
     <directory>/</directory>
     <trans_type>Normal</trans_type>
+    <unique_connections>@@UNIQUE_CONNECTIONS@@</unique_connections>
     <size_rowset>100</size_rowset>
     <parameters/>
   </info>
