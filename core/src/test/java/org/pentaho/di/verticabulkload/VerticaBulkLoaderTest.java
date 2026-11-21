@@ -492,7 +492,7 @@ public class VerticaBulkLoaderTest {
     assertTrue( loader.isStopped() );
   }
 
-  /** Successful COPY completion must precede commit and disconnect. */
+  /** A worker that ignores interrupts must not prevent bounded shutdown and error reporting. */
   @Test( timeout = 3000 )
   public void shouldNotWaitIndefinitelyWhenWorkerIgnoresInterrupt() throws Exception {
     doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
@@ -525,6 +525,7 @@ public class VerticaBulkLoaderTest {
     }
   }
 
+  /** Successful COPY completion must precede commit and disconnect. */
   @Test( timeout = 3000 )
   public void shouldWaitForSuccessfulWorkerBeforeDisconnectingDuringDispose() throws Exception {
     Database database = mock( Database.class );
