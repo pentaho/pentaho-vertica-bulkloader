@@ -11,6 +11,10 @@ work already performed on the same connection.
 
 #### TODO/LIMITATIONS:
 
+Concurrent COPY streams - Loader copies fed by a shared upstream step can stall if Vertica's
+  resource pool cannot admit all of their COPY requests at the same time. Ensure sufficient
+  available pool capacity for the dependent copies, including other concurrent workloads.
+
 No data escaping - If there is a \. the load will silently be truncated.
   If a field contains the delimiter or record terminator, that record will be rejected.
   The step should probably be enhanced with a few more options to enable checking/escaping.
