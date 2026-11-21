@@ -350,11 +350,15 @@ class VerticaBulkLoaderIT {
   private void collectLiveCopyState( Path destination ) {
     String[] labels = { "live-copy-locks", "live-copy-requests", "live-copy-resource-queue" };
     String[] queries = {
-      "SELECT node_names, object_name, transaction_id, lock_mode, lock_scope, request_timestamp, grant_timestamp "
-        + "FROM v_monitor.locks WHERE object_name ILIKE '%qa_target%'",
-      "SELECT node_name, session_id, request_id, transaction_id, statement_id, request_type, "
+      "SELECT locks.node_names, locks.object_name, locks.transaction_id, locks.lock_mode, locks.lock_scope, "
+        + "locks.request_timestamp, locks.grant_timestamp, transactions.user_name, transactions.session_id, "
+        + "transactions.isolation, transactions.is_ddl FROM v_monitor.locks locks "
+        + "LEFT JOIN v_monitor.transactions transactions ON locks.transaction_id=transactions.transaction_id "
+        + "WHERE locks.object_name ILIKE '%qa_target%'",
+      "SELECT node_name, session_id, user_name, request_id, transaction_id, statement_id, request_type, "
         + "start_timestamp, request_duration_ms, is_executing FROM v_monitor.query_requests "
-        + "WHERE user_name='qa_loader' AND is_executing=true",
+        + "WHERE (user_name='qa_loader' AND is_executing=true) OR transaction_id IN "
+        + "(SELECT transaction_id FROM v_monitor.locks WHERE object_name ILIKE '%qa_target%')",
       "SELECT node_name, transaction_id, statement_id, pool_name, position_in_queue, queue_entry_timestamp "
         + "FROM v_monitor.resource_queues WHERE transaction_id IN "
         + "(SELECT transaction_id FROM v_monitor.query_requests WHERE user_name='qa_loader' AND is_executing=true)"
