@@ -491,6 +491,7 @@ public class VerticaBulkLoaderTest {
     assertTrue( loader.isStopped() );
   }
 
+  /** A worker that ignores interrupts must not prevent bounded shutdown and error reporting. */
   @Test( timeout = 3000 )
   public void shouldNotWaitIndefinitelyWhenWorkerIgnoresInterrupt() throws Exception {
     doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
@@ -523,6 +524,7 @@ public class VerticaBulkLoaderTest {
     }
   }
 
+  /** Successful COPY completion must precede commit and disconnect. */
   @Test( timeout = 3000 )
   public void shouldWaitForSuccessfulWorkerBeforeDisconnectingDuringDispose() throws Exception {
     Database database = mock( Database.class );
@@ -559,11 +561,34 @@ public class VerticaBulkLoaderTest {
       disposeThread.join( 1000 );
       assertFalse( disposeThread.isAlive() );
       assertTrue( disconnectCalled.await( 1, TimeUnit.SECONDS ) );
+      InOrder cleanupOrder = inOrder( database );
+      cleanupOrder.verify( database ).commit();
+      cleanupOrder.verify( database ).disconnect();
     } finally {
       releaseWorker.countDown();
       successfulWorker.interrupt();
       successfulWorker.join( 1000 );
     }
+  }
+
+  /** A failed completion commit must report an error, roll back and disconnect. */
+  @Test
+  public void shouldRollbackAndDisconnectWhenCommitFails() throws Exception {
+    Database database = mock( Database.class );
+    Connection connection = mock( Connection.class );
+    when( database.getConnection() ).thenReturn( connection );
+    doThrow( new KettleDatabaseException( "Commit failed" ) ).when( database ).commit();
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    loader.setStopped( false );
+
+    loader.dispose( loaderMeta, loaderData );
+
+    assertTrue( loader.getErrors() > 0 );
+    InOrder cleanupOrder = inOrder( database );
+    cleanupOrder.verify( database ).commit();
+    cleanupOrder.verify( database ).rollback();
+    cleanupOrder.verify( database ).disconnect();
   }
 
   @Test
@@ -1122,6 +1147,112 @@ public class VerticaBulkLoaderTest {
     verify( database ).rollback();
     verify( database ).disconnect();
     assertEquals( 1, loader.getErrors() );
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldRetainPooledLeaseWhenWorkerExitsBeforeCancellation() throws Exception {
+    assertPooledLeaseHeldUntilThreadsExit( true );
+  }
+
+  @Test( timeout = 5000 )
+  public void shouldRetainPooledLeaseWhenCancellationExitsBeforeWorker() throws Exception {
+    assertPooledLeaseHeldUntilThreadsExit( false );
+  }
+
+  private void assertPooledLeaseHeldUntilThreadsExit( boolean workerExitsFirst ) throws Exception {
+    Database database = mock( Database.class );
+    Connection wrapper = mock( Connection.class );
+    VerticaConnection physical = mock( VerticaConnection.class );
+    when( database.getConnection() ).thenReturn( wrapper );
+    when( wrapper.unwrap( VerticaConnection.class ) ).thenReturn( physical );
+    loaderData.db = database;
+    loader.setErrors( 0 );
+    doReturn( 100L ).when( loader ).workerShutdownTimeoutMillis();
+
+    CountDownLatch workerStarted = new CountDownLatch( 1 );
+    CountDownLatch releaseWorker = new CountDownLatch( 1 );
+    CountDownLatch closeStarted = new CountDownLatch( 1 );
+    CountDownLatch closeFinished = new CountDownLatch( 1 );
+    CountDownLatch releaseClose = new CountDownLatch( 1 );
+    CountDownLatch cleanupAction = new CountDownLatch( 1 );
+    AtomicReference<Thread> cleanupThread = new AtomicReference<>();
+    Thread worker = new Thread( () -> {
+      workerStarted.countDown();
+      awaitIgnoringInterrupts( releaseWorker );
+    } );
+    worker.setDaemon( true );
+    loaderData.workerThread = worker;
+    doAnswer( invocation -> {
+      Thread thread = new Thread( (Runnable) invocation.getArgument( 0 ) );
+      cleanupThread.set( thread );
+      return thread;
+    } ).when( loader ).createDatabaseCleanupThread( any( Runnable.class ) );
+    doAnswer( invocation -> {
+      closeStarted.countDown();
+      try {
+        awaitIgnoringInterrupts( releaseClose );
+      } finally {
+        closeFinished.countDown();
+      }
+      return null;
+    } ).when( physical ).close();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( wrapper ).close();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( database ).rollback();
+    doAnswer( invocation -> {
+      cleanupAction.countDown();
+      return null;
+    } ).when( database ).disconnect();
+
+    worker.start();
+    try {
+      assertTrue( workerStarted.await( 1, TimeUnit.SECONDS ) );
+      loader.stopRunning( loaderMeta, loaderData );
+      assertTrue( closeStarted.await( 1, TimeUnit.SECONDS ) );
+      assertTrue( worker.isAlive() );
+      verify( physical, times( 1 ) ).close();
+      verify( wrapper, never() ).close();
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
+
+      if ( workerExitsFirst ) {
+        releaseWorker.countDown();
+        worker.join( 1000 );
+        assertFalse( worker.isAlive() );
+      } else {
+        releaseClose.countDown();
+        assertTrue( closeFinished.await( 1, TimeUnit.SECONDS ) );
+        assertTrue( worker.isAlive() );
+      }
+      assertFalse( cleanupAction.await( 200, TimeUnit.MILLISECONDS ) );
+      verify( wrapper, never() ).close();
+      verify( database, never() ).rollback();
+      verify( database, never() ).disconnect();
+
+      releaseWorker.countDown();
+      releaseClose.countDown();
+      worker.join( 1000 );
+      assertNotNull( cleanupThread.get() );
+      cleanupThread.get().join( 1000 );
+      assertFalse( worker.isAlive() );
+      assertFalse( cleanupThread.get().isAlive() );
+      InOrder cleanupOrder = inOrder( database, wrapper );
+      cleanupOrder.verify( database ).rollback();
+      cleanupOrder.verify( database ).disconnect();
+      cleanupOrder.verify( wrapper ).close();
+    } finally {
+      releaseWorker.countDown();
+      releaseClose.countDown();
+      worker.join( 1000 );
+      if ( cleanupThread.get() != null ) {
+        cleanupThread.get().join( 1000 );
+      }
+    }
   }
 
   @Test

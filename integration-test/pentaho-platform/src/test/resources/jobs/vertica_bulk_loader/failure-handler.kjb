@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SP-7583: Java substitutes the generated transformation's absolute container path before copying. -->
+<job>
+  <name>SP-7583 failure propagation</name>
+  <description>SP-7583: denied loader COPY must take the red hop, commit one admin audit row, and return Kitchen exit 1 through ABORT. A green hop is an explicit failure.</description>
+  <directory>/</directory>
+  <connection>
+    <name>Vertica audit admin</name>
+    <server>vertica-hostname</server><type>VERTICA5</type><access>Native</access>
+    <database>vmart</database><port>5433</port><username>dbadmin</username><password/>
+    <attributes>
+      <attribute><code>PORT_NUMBER</code><attribute>5433</attribute></attribute>
+      <attribute><code>USE_POOLING</code><attribute>N</attribute></attribute>
+    </attributes>
+  </connection>
+  <notepads>
+    <notepad>
+      <note>SP-7583: qa_loader loses only INSERT; dbadmin remains able to persist the red-hop audit. Java requires exactly one SP-7583:handled marker, no committed target rows, no loader sessions, original SQL error and exact exit 1. ABORT is the verified installed JobEntryAbort plugin ID; its failure is intentional after audit.</note>
+      <xloc>50</xloc><yloc>220</yloc><width>800</width><heigth>110</heigth>
+    </notepad>
+  </notepads>
+  <entries>
+    <entry>
+      <name>START</name><type>SPECIAL</type><start>Y</start><dummy>N</dummy><repeat>N</repeat>
+      <draw>Y</draw><xloc>70</xloc><yloc>80</yloc>
+    </entry>
+    <entry>
+      <name>SP-7583 load</name><type>TRANS</type><specification_method>filename</specification_method>
+      <filename>@@TRANSFORMATION@@</filename><wait_until_finished>Y</wait_until_finished>
+      <parameters><pass_all_parameters>N</pass_all_parameters></parameters>
+      <draw>Y</draw><xloc>240</xloc><yloc>80</yloc>
+    </entry>
+    <entry>
+      <name>SP-7583 failure audit</name><type>SQL</type><connection>Vertica audit admin</connection>
+      <sql>INSERT INTO public.qa_audit VALUES ('SP-7583:handled')</sql>
+      <useVariableSubstitution>N</useVariableSubstitution>
+      <draw>Y</draw><xloc>430</xloc><yloc>150</yloc>
+    </entry>
+    <entry>
+      <name>SP-7583 preserve failure</name><type>ABORT</type>
+      <message>SP-7583 expected load failure was handled</message>
+      <draw>Y</draw><xloc>650</xloc><yloc>150</yloc>
+    </entry>
+    <entry>
+      <name>SP-7583 unexpected success</name><type>ABORT</type>
+      <message>SP-7583 ERROR: COPY unexpectedly succeeded</message>
+      <draw>Y</draw><xloc>430</xloc><yloc>30</yloc>
+    </entry>
+  </entries>
+  <hops>
+    <hop><from>START</from><to>SP-7583 load</to><enabled>Y</enabled><unconditional>Y</unconditional><evaluation>Y</evaluation></hop>
+    <hop><from>SP-7583 load</from><to>SP-7583 failure audit</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>N</evaluation></hop>
+    <hop><from>SP-7583 load</from><to>SP-7583 unexpected success</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>Y</evaluation></hop>
+    <hop><from>SP-7583 failure audit</from><to>SP-7583 preserve failure</to><enabled>Y</enabled><unconditional>N</unconditional><evaluation>Y</evaluation></hop>
+  </hops>
+</job>

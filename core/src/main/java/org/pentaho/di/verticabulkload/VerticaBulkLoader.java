@@ -531,10 +531,7 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
           .append( "' " );
     }
 
-    // XXX: I believe the right thing to do here is always use NO COMMIT since we want Kettle's configuration to drive.
-    // NO COMMIT does not seem to work even when the transformation setting 'make the transformation database
-    // transactional' is on
-    // sb.append("NO COMMIT");
+    sb.append( "NO COMMIT " );
 
     logDebug( "copy stmt: " + sb.toString() );
 
@@ -742,7 +739,14 @@ public class VerticaBulkLoader extends BaseStep implements StepInterface {
           if ( forcedCleanup ) {
             cleanupDatabase( database, workerThread, deadline );
           } else {
-            database.disconnect();
+            try {
+              database.commit();
+              database.disconnect();
+            } catch ( KettleDatabaseException e ) {
+              logError( "Unable to commit the Vertica bulk load.", e );
+              setErrors( 1 );
+              rollbackAndDisconnect( database );
+            }
           }
         } );
         databaseCleanupThread.setDaemon( true );
